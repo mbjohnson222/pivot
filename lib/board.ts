@@ -6,7 +6,7 @@ export function cloneGrid(grid: Grid): Grid {
 
 export function createEmptyGrid(size: number): Grid {
   return Array.from({ length: size }, () =>
-    Array.from({ length: size }, () => 0 as 0 | 1)
+    Array.from({ length: size }, () => 0 as 0 | 1 | 2)
   );
 }
 
@@ -27,6 +27,12 @@ export function gridsEqual(a: Grid, b: Grid): boolean {
 export function toggleCell(grid: Grid, row: number, col: number): Grid {
   const next = cloneGrid(grid);
   next[row][col] = next[row][col] === 1 ? 0 : 1;
+  return next;
+}
+
+export function setCell(grid: Grid, row: number, col: number, value: 0 | 1 | 2): Grid {
+  const next = cloneGrid(grid);
+  next[row][col] = value;
   return next;
 }
 

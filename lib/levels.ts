@@ -132,6 +132,41 @@ function makeTransformLevel(
   };
 }
 
+function makeChromaticTransformLevel(
+  id: number,
+  source: Grid,
+  transform: TransformKind
+): Level {
+  return {
+    id,
+    type: "chromatic",
+    size: source.length,
+    prompt: `Build the result after ${transformInstructionLabel(
+      transform
+    )}, keeping both colors in the correct positions.`,
+    startGrid: cloneGrid(source),
+    targetGrid: applyTransform(cloneGrid(source), transform),
+  };
+}
+
+function makeChromaticMultiTransformLevel(
+  id: number,
+  source: Grid,
+  transforms: TransformKind[]
+): Level {
+  return {
+    id,
+    type: "chromatic",
+    size: source.length,
+    prompt: `${multiTransformPrompt(transforms).replace(
+      "Build the result after ",
+      "Build the two-color result after "
+    )} Keep each color on the correct tile.`,
+    startGrid: cloneGrid(source),
+    targetGrid: applyTransformSequence(cloneGrid(source), transforms),
+  };
+}
+
 function makeMultiTransformLevel(
   id: number,
   source: Grid,
@@ -217,6 +252,86 @@ const T4E: Grid = [
   [0, 1, 0, 0],
   [0, 1, 1, 0],
   [0, 0, 0, 0],
+];
+
+const C5A: Grid = [
+  [1, 0, 2, 0, 0],
+  [0, 1, 0, 2, 0],
+  [2, 0, 1, 0, 1],
+  [0, 2, 0, 1, 0],
+  [0, 0, 1, 0, 2],
+];
+
+const C5B: Grid = [
+  [0, 2, 0, 1, 0],
+  [1, 0, 2, 0, 1],
+  [0, 1, 0, 2, 0],
+  [2, 0, 1, 0, 2],
+  [0, 1, 0, 2, 0],
+];
+
+const C5C: Grid = [
+  [1, 1, 0, 2, 0],
+  [0, 2, 0, 1, 2],
+  [2, 0, 1, 0, 0],
+  [0, 1, 2, 0, 1],
+  [0, 0, 1, 2, 0],
+];
+
+const C5D: Grid = [
+  [2, 0, 1, 0, 2],
+  [0, 1, 0, 2, 0],
+  [1, 0, 2, 0, 1],
+  [0, 2, 0, 1, 0],
+  [2, 0, 1, 0, 2],
+];
+
+const C5E: Grid = [
+  [0, 1, 0, 2, 1],
+  [2, 0, 1, 0, 0],
+  [0, 2, 0, 1, 2],
+  [1, 0, 2, 0, 1],
+  [0, 1, 0, 2, 0],
+];
+
+const C5F: Grid = [
+  [1, 0, 0, 2, 0],
+  [0, 2, 1, 0, 1],
+  [2, 0, 2, 0, 0],
+  [0, 1, 0, 2, 1],
+  [1, 0, 1, 0, 2],
+];
+
+const C5G: Grid = [
+  [0, 2, 1, 0, 1],
+  [1, 0, 0, 2, 0],
+  [0, 1, 2, 0, 2],
+  [2, 0, 1, 0, 0],
+  [0, 2, 0, 1, 2],
+];
+
+const C5H: Grid = [
+  [2, 1, 0, 0, 1],
+  [0, 0, 2, 1, 0],
+  [1, 2, 0, 2, 0],
+  [0, 1, 0, 0, 2],
+  [2, 0, 1, 0, 1],
+];
+
+const C5I: Grid = [
+  [1, 0, 2, 1, 0],
+  [0, 2, 0, 0, 2],
+  [1, 0, 1, 2, 0],
+  [0, 1, 0, 0, 1],
+  [2, 0, 2, 1, 0],
+];
+
+const C5J: Grid = [
+  [0, 1, 2, 0, 2],
+  [2, 0, 0, 1, 0],
+  [0, 2, 1, 0, 1],
+  [1, 0, 2, 0, 0],
+  [0, 1, 0, 2, 1],
 ];
 
 const T4F: Grid = [
@@ -1158,9 +1273,67 @@ const hundred_5x5_advanced: Level[] = [
   makeMultiTransformLevel(300, T5N, ["flipY", "rotate180"]),
 ];
 
+const chromatic_5x5_endgame: Level[] = [
+  makeChromaticTransformLevel(301, C5A, "rotate90cw"),
+  makeChromaticTransformLevel(302, C5B, "flipX"),
+  makeChromaticTransformLevel(303, C5C, "rotate180"),
+  makeChromaticTransformLevel(304, C5D, "rotate90ccw"),
+  makeChromaticTransformLevel(305, C5E, "flipY"),
+  makeChromaticMultiTransformLevel(306, C5F, ["rotate90cw", "flipY"]),
+  makeChromaticMultiTransformLevel(307, C5G, ["flipX", "rotate180"]),
+  makeChromaticMultiTransformLevel(308, C5H, ["rotate90ccw", "flipX"]),
+  makeChromaticMultiTransformLevel(309, C5I, ["flipY", "rotate90cw"]),
+  makeChromaticMultiTransformLevel(310, C5J, ["rotate180", "flipY"]),
+
+  makeChromaticTransformLevel(311, C5B, "rotate90cw"),
+  makeChromaticTransformLevel(312, C5C, "flipX"),
+  makeChromaticTransformLevel(313, C5D, "rotate180"),
+  makeChromaticTransformLevel(314, C5E, "rotate90ccw"),
+  makeChromaticTransformLevel(315, C5F, "flipY"),
+  makeChromaticMultiTransformLevel(316, C5G, ["rotate90cw", "flipX"]),
+  makeChromaticMultiTransformLevel(317, C5H, ["flipY", "rotate180"]),
+  makeChromaticMultiTransformLevel(318, C5I, ["rotate90ccw", "flipY"]),
+  makeChromaticMultiTransformLevel(319, C5J, ["flipX", "rotate90cw"]),
+  makeChromaticMultiTransformLevel(320, C5A, ["rotate180", "flipX"]),
+
+  makeChromaticTransformLevel(321, C5C, "rotate90cw"),
+  makeChromaticTransformLevel(322, C5D, "flipX"),
+  makeChromaticTransformLevel(323, C5E, "rotate180"),
+  makeChromaticTransformLevel(324, C5F, "rotate90ccw"),
+  makeChromaticTransformLevel(325, C5G, "flipY"),
+  makeChromaticMultiTransformLevel(326, C5H, ["rotate90cw", "rotate180"]),
+  makeChromaticMultiTransformLevel(327, C5I, ["flipX", "rotate180"]),
+  makeChromaticMultiTransformLevel(328, C5J, ["rotate90ccw", "flipX"]),
+  makeChromaticMultiTransformLevel(329, C5A, ["flipY", "rotate90ccw"]),
+  makeChromaticMultiTransformLevel(330, C5B, ["rotate180", "flipY"]),
+
+  makeChromaticTransformLevel(331, C5D, "rotate90cw"),
+  makeChromaticTransformLevel(332, C5E, "flipX"),
+  makeChromaticTransformLevel(333, C5F, "rotate180"),
+  makeChromaticTransformLevel(334, C5G, "rotate90ccw"),
+  makeChromaticTransformLevel(335, C5H, "flipY"),
+  makeChromaticMultiTransformLevel(336, C5I, ["rotate90cw", "flipY"]),
+  makeChromaticMultiTransformLevel(337, C5J, ["flipX", "rotate90ccw"]),
+  makeChromaticMultiTransformLevel(338, C5A, ["rotate180", "flipY"]),
+  makeChromaticMultiTransformLevel(339, C5B, ["flipY", "rotate90cw"]),
+  makeChromaticMultiTransformLevel(340, C5C, ["rotate90ccw", "rotate180"]),
+
+  makeChromaticTransformLevel(341, C5E, "rotate90cw"),
+  makeChromaticTransformLevel(342, C5F, "flipX"),
+  makeChromaticTransformLevel(343, C5G, "rotate180"),
+  makeChromaticTransformLevel(344, C5H, "rotate90ccw"),
+  makeChromaticTransformLevel(345, C5I, "flipY"),
+  makeChromaticMultiTransformLevel(346, C5J, ["rotate90cw", "flipX"]),
+  makeChromaticMultiTransformLevel(347, C5A, ["flipY", "rotate180"]),
+  makeChromaticMultiTransformLevel(348, C5B, ["rotate90ccw", "flipY"]),
+  makeChromaticMultiTransformLevel(349, C5C, ["flipX", "rotate90cw"]),
+  makeChromaticMultiTransformLevel(350, C5D, ["rotate180", "flipX"]),
+];
+
 export const levels: Level[] = [
   ...first50_4x4,
   ...second50_4x4,
   ...hundred_5x5,
   ...hundred_5x5_advanced,
+  ...chromatic_5x5_endgame,
 ];

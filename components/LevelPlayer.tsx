@@ -8,6 +8,7 @@ import {
   createEmptyGrid,
   gridsEqual,
   isSymmetryCellEditable,
+  setCell,
   toggleCell,
 } from "@/lib/board";
 import {
@@ -39,6 +40,7 @@ export default function LevelPlayer({
   onComplete,
 }: LevelPlayerProps) {
   const [playerGrid, setPlayerGrid] = useState(createEmptyGrid(level.size));
+  const [activePaint, setActivePaint] = useState<0 | 1 | 2>(1);
   const [showMemoryPreview, setShowMemoryPreview] = useState(false);
   const [hintedCell, setHintedCell] = useState<HintCell | null>(null);
   const [hintMessage, setHintMessage] = useState("");
@@ -100,6 +102,7 @@ export default function LevelPlayer({
     stopGameTimer();
     setHintedCell(null);
     setHintMessage("");
+    setActivePaint(1);
     setSubmitting(false);
     setWon(false);
     setMoves(0);
@@ -124,11 +127,12 @@ export default function LevelPlayer({
     setHasStarted(true);
     setHintedCell(null);
     setHintMessage("");
+    setActivePaint(1);
     setWon(false);
     setMoves(0);
     setElapsedMs(0);
 
-    if (level.type === "transform") {
+    if (level.type === "transform" || level.type === "chromatic") {
       setShowMemoryPreview(false);
       setPlayerGrid(createEmptyGrid(level.size));
       startGameTimer();
@@ -163,6 +167,7 @@ export default function LevelPlayer({
       stopGameTimer();
       setHintedCell(null);
       setHintMessage("");
+      setActivePaint(1);
       setSubmitting(false);
       setWon(false);
       setMoves(0);
@@ -210,7 +215,14 @@ export default function LevelPlayer({
       setHintMessage("");
     }
 
-    setPlayerGrid((prev) => toggleCell(prev, row, col));
+    if (level.type === "chromatic") {
+      setPlayerGrid((prev) => {
+        const nextValue = prev[row][col] === activePaint ? 0 : activePaint;
+        return setCell(prev, row, col, nextValue);
+      });
+    } else {
+      setPlayerGrid((prev) => toggleCell(prev, row, col));
+    }
     setMoves((prev) => prev + 1);
   }
 
@@ -305,6 +317,8 @@ export default function LevelPlayer({
       ? "Transform"
       : level.type === "memory"
       ? "Memory"
+      : level.type === "chromatic"
+      ? "Chromatic"
       : "Symmetry";
 
   function symmetrySubtitle() {
@@ -355,26 +369,60 @@ export default function LevelPlayer({
           </button>
         )}
 
-        {level.type === "transform" && (
+        {(level.type === "transform" || level.type === "chromatic") && (
           <div className="grid w-full gap-8 lg:grid-cols-2">
             <div className="flex justify-center">
               <GameBoard
                 grid={level.startGrid}
                 disabled
                 title="Source Pattern"
-                subtitle="Use this as the input pattern"
+                subtitle={
+                  level.type === "chromatic"
+                    ? "Use both colors and preserve them through the transformation"
+                    : "Use this as the input pattern"
+                }
               />
             </div>
 
-            <div className="flex justify-center">
-              <GameBoard
-                grid={playerGrid}
-                onCellClick={handleCellClick}
-                disabled={!hasStarted}
-                title="Your Build"
-                subtitle="Tap tiles to create the transformed result"
-                highlightedCell={hintedCell}
-              />
+            <div className="flex flex-col items-center gap-4">
+              {level.type === "chromatic" && (
+                <div className="flex flex-wrap items-center justify-center gap-3 rounded-2xl border border-slate-700 bg-slate-900/70 px-4 py-3">
+                  <span className="text-sm font-semibold text-slate-300">Paint</span>
+                  <PaintButton
+                    label="Clear"
+                    active={activePaint === 0}
+                    colorClass="bg-slate-700"
+                    onClick={() => setActivePaint(0)}
+                  />
+                  <PaintButton
+                    label="Cyan"
+                    active={activePaint === 1}
+                    colorClass="bg-cyan-400"
+                    onClick={() => setActivePaint(1)}
+                  />
+                  <PaintButton
+                    label="Amber"
+                    active={activePaint === 2}
+                    colorClass="bg-amber-400"
+                    onClick={() => setActivePaint(2)}
+                  />
+                </div>
+              )}
+
+              <div className="flex justify-center">
+                <GameBoard
+                  grid={playerGrid}
+                  onCellClick={handleCellClick}
+                  disabled={!hasStarted}
+                  title="Your Build"
+                  subtitle={
+                    level.type === "chromatic"
+                      ? "Choose a paint color, then tap tiles to place the correct color"
+                      : "Tap tiles to create the transformed result"
+                  }
+                  highlightedCell={hintedCell}
+                />
+              </div>
             </div>
           </div>
         )}
@@ -614,6 +662,33 @@ function StatPill({ label, value }: { label: string; value: string }) {
   );
 }
 
+function PaintButton({
+  active,
+  colorClass,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  colorClass: string;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-semibold transition ${
+        active
+          ? "border-white/40 bg-white/10 text-white"
+          : "border-slate-700 bg-slate-950/60 text-slate-300 hover:bg-slate-800"
+      }`}
+    >
+      <span className={`h-3.5 w-3.5 rounded-full ${colorClass}`} />
+      <span>{label}</span>
+    </button>
+  );
+}
+
 function formatMs(ms: number) {
   const totalSeconds = Math.floor(ms / 1000);
   const minutes = Math.floor(totalSeconds / 60);
@@ -667,7 +742,7 @@ function getHintCell(grid: Grid, level: Level): HintCell | null {
 
 function getStarThresholds(level: Level) {
   const baseSeconds =
-    level.type === "transform"
+    level.type === "transform" || level.type === "chromatic"
       ? level.size * 7 + 8
       : level.type === "memory"
       ? level.size * 8 + Math.round((level.memoryPreviewMs ?? 2000) / 1000) + 8

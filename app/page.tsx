@@ -27,11 +27,7 @@ export default function HomePage() {
       return 0;
     }
 
-    const completed = getProgress().completedLevels;
-    const highestCompleted = completed.length > 0 ? Math.max(...completed) : 0;
-    const nextLevelId = Math.min(levels.length, highestCompleted > 0 ? highestCompleted + 1 : 1);
-
-    return Math.max(0, levels.findIndex((level) => level.id === nextLevelId));
+    return getResumeLevelIndex(getProgress());
   });
   const [username, setUsername] = useState<string | null>(() => {
     if (typeof window === "undefined") {
@@ -57,6 +53,19 @@ export default function HomePage() {
   useEffect(() => {
     let cancelled = false;
 
+    queueMicrotask(() => {
+      if (cancelled) return;
+
+      const savedProgress = getProgress();
+      setProgress(savedProgress);
+      setLevelIndex(getResumeLevelIndex(savedProgress));
+
+      const savedUsername = localStorage.getItem("pivot-username");
+      if (savedUsername) {
+        setUsername(savedUsername);
+      }
+    });
+
     void Promise.resolve().then(async () => {
       const daily = await getDailyChallenge();
 
@@ -67,6 +76,38 @@ export default function HomePage() {
 
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    function handleStorage(event: StorageEvent) {
+      if (event.key !== "pivot-progress") return;
+
+      const savedProgress = getProgress();
+      setProgress(savedProgress);
+      setLevelIndex((currentIndex) => {
+        const currentLevelId = levels[currentIndex]?.id ?? 1;
+        const highestCompletedLevel =
+          savedProgress.completedLevels.length > 0
+            ? Math.max(...savedProgress.completedLevels)
+            : 0;
+        const highestUnlockedLevel = Math.min(
+          levels.length,
+          highestCompletedLevel > 0 ? highestCompletedLevel + 1 : 1
+        );
+
+        if (currentLevelId <= highestUnlockedLevel) {
+          return currentIndex;
+        }
+
+        return getResumeLevelIndex(savedProgress);
+      });
+    }
+
+    window.addEventListener("storage", handleStorage);
+
+    return () => {
+      window.removeEventListener("storage", handleStorage);
     };
   }, []);
 
@@ -300,4 +341,12 @@ export default function HomePage() {
       )}
     </main>
   );
+}
+
+function getResumeLevelIndex(progress: Progress) {
+  const completed = progress.completedLevels;
+  const highestCompleted = completed.length > 0 ? Math.max(...completed) : 0;
+  const nextLevelId = Math.min(levels.length, highestCompleted > 0 ? highestCompleted + 1 : 1);
+
+  return Math.max(0, levels.findIndex((level) => level.id === nextLevelId));
 }

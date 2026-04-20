@@ -112,7 +112,7 @@ export async function updateHighestLevel(username: string, levelId: number) {
 export async function submitLevelScore(input: {
   levelId: number;
   username: string;
-  mode: "transform" | "memory" | "symmetry";
+  mode: "transform" | "memory" | "symmetry" | "chromatic";
   size: number;
   moves: number;
   timeMs: number;
