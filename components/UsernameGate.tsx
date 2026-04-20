@@ -7,18 +7,27 @@ type Props = {
 };
 
 export default function UsernameGate({ onUsernameSet }: Props) {
-  const [value, setValue] = useState("");
-  const [savedUsername, setSavedUsername] = useState<string | null>(null);
+  const [value, setValue] = useState(() => {
+    if (typeof window === "undefined") {
+      return "";
+    }
+
+    return localStorage.getItem("pivot-username") ?? "";
+  });
+  const [savedUsername, setSavedUsername] = useState<string | null>(() => {
+    if (typeof window === "undefined") {
+      return null;
+    }
+
+    return localStorage.getItem("pivot-username");
+  });
   const [message, setMessage] = useState("");
 
   useEffect(() => {
-    const saved = localStorage.getItem("pivot-username");
-    if (saved) {
-      setValue(saved);
-      setSavedUsername(saved);
-      onUsernameSet(saved);
+    if (savedUsername) {
+      onUsernameSet(savedUsername);
     }
-  }, [onUsernameSet]);
+  }, [onUsernameSet, savedUsername]);
 
   function save() {
     const trimmed = value.trim();

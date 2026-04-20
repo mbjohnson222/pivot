@@ -9,6 +9,7 @@ type GameBoardProps = {
   title?: string;
   subtitle?: string;
   isCellEditable?: (row: number, col: number) => boolean;
+  highlightedCell?: { row: number; col: number } | null;
 };
 
 export default function GameBoard({
@@ -18,6 +19,7 @@ export default function GameBoard({
   title,
   subtitle,
   isCellEditable,
+  highlightedCell,
 }: GameBoardProps) {
   const size = grid.length;
 
@@ -45,6 +47,8 @@ export default function GameBoard({
             row.map((cell, c) => {
               const editable = isCellEditable ? isCellEditable(r, c) : !disabled;
               const actuallyDisabled = disabled || !editable;
+              const isHighlighted =
+                highlightedCell?.row === r && highlightedCell?.col === c;
 
               return (
                 <button
@@ -72,6 +76,9 @@ export default function GameBoard({
                     actuallyDisabled
                       ? "cursor-default"
                       : "cursor-pointer hover:-translate-y-0.5 hover:scale-[1.02] active:scale-95",
+                    isHighlighted
+                      ? "border-red-400 ring-2 ring-red-400/85 ring-offset-2 ring-offset-slate-900"
+                      : "",
                   ].join(" ")}
                 />
               );

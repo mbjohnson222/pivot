@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Level } from "@/types/game";
+import type { Grid, Level } from "@/types/game";
 import GameBoard from "@/components/GameBoard";
 import {
   cloneGrid,
@@ -22,7 +22,10 @@ import {
 type LevelPlayerProps = {
   level: Level;
   username: string | null;
-  onComplete: () => void;
+  availableStars: number;
+  bestStars: number;
+  onSpendHintStar: () => boolean;
+  onComplete: (starsEarned: number) => void;
 };
 
 type LeaderboardTab = "level" | "progress";
@@ -30,10 +33,15 @@ type LeaderboardTab = "level" | "progress";
 export default function LevelPlayer({
   level,
   username,
+  availableStars,
+  bestStars,
+  onSpendHintStar,
   onComplete,
 }: LevelPlayerProps) {
   const [playerGrid, setPlayerGrid] = useState(createEmptyGrid(level.size));
   const [showMemoryPreview, setShowMemoryPreview] = useState(false);
+  const [hintedCell, setHintedCell] = useState<HintCell | null>(null);
+  const [hintMessage, setHintMessage] = useState("");
   const [won, setWon] = useState(false);
   const [moves, setMoves] = useState(0);
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -90,6 +98,9 @@ export default function LevelPlayer({
   function resetLevelState() {
     clearPreviewTimer();
     stopGameTimer();
+    setHintedCell(null);
+    setHintMessage("");
+    setSubmitting(false);
     setWon(false);
     setMoves(0);
     setElapsedMs(0);
@@ -111,6 +122,8 @@ export default function LevelPlayer({
     if (hasStarted) return;
 
     setHasStarted(true);
+    setHintedCell(null);
+    setHintMessage("");
     setWon(false);
     setMoves(0);
     setElapsedMs(0);
@@ -141,48 +154,46 @@ export default function LevelPlayer({
   }
 
   useEffect(() => {
-    initializeLevel();
-    void refreshAllLeaderboards();
+    let cancelled = false;
+
+    queueMicrotask(() => {
+      if (cancelled) return;
+
+      clearPreviewTimer();
+      stopGameTimer();
+      setHintedCell(null);
+      setHintMessage("");
+      setSubmitting(false);
+      setWon(false);
+      setMoves(0);
+      setElapsedMs(0);
+      setHasStarted(false);
+      setShowMemoryPreview(false);
+      setPlayerGrid(
+        level.type === "symmetry" ? cloneGrid(level.startGrid) : createEmptyGrid(level.size)
+      );
+    });
+
+    void Promise.resolve().then(async () => {
+      if (cancelled) return;
+
+      const [levelRows, progressRows] = await Promise.all([
+        getLevelLeaderboard(level.id),
+        getProgressLeaderboard(),
+      ]);
+
+      if (cancelled) return;
+
+      setLevelLeaderboard(levelRows);
+      setProgressLeaderboard(progressRows);
+    });
 
     return () => {
+      cancelled = true;
       clearPreviewTimer();
       stopGameTimer();
     };
-  }, [level.id]);
-
-  useEffect(() => {
-    if (!hasStarted || won || showMemoryPreview) return;
-
-    if (gridsEqual(playerGrid, level.targetGrid)) {
-      setWon(true);
-      stopGameTimer();
-
-      const finalElapsed =
-        gameStartRef.current !== null ? Date.now() - gameStartRef.current : elapsedMs;
-
-      setElapsedMs(finalElapsed);
-
-      void (async () => {
-        if (!username) return;
-
-        setSubmitting(true);
-
-        await submitLevelScore({
-          levelId: level.id,
-          username,
-          mode: level.type,
-          size: level.size,
-          moves,
-          timeMs: finalElapsed,
-        });
-
-        await updateHighestLevel(username, level.id);
-        await refreshAllLeaderboards();
-
-        setSubmitting(false);
-      })();
-    }
-  }, [playerGrid, level, showMemoryPreview, won, username, moves, elapsedMs, hasStarted]);
+  }, [level]);
 
   function handleCellClick(row: number, col: number) {
     if (!hasStarted || won || showMemoryPreview) return;
@@ -194,11 +205,76 @@ export default function LevelPlayer({
       }
     }
 
+    if (hintedCell?.row === row && hintedCell.col === col) {
+      setHintedCell(null);
+      setHintMessage("");
+    }
+
     setPlayerGrid((prev) => toggleCell(prev, row, col));
     setMoves((prev) => prev + 1);
   }
 
   const timerLabel = useMemo(() => formatMs(elapsedMs), [elapsedMs]);
+  const canSubmit =
+    hasStarted && !won && !showMemoryPreview && gridsEqual(playerGrid, level.targetGrid);
+  const currentStarReward = getStarReward(level, elapsedMs);
+  const thresholds = getStarThresholds(level);
+  const nextHintCell = getHintCell(playerGrid, level);
+  const canUseHint =
+    hasStarted && !won && !showMemoryPreview && availableStars > 0 && nextHintCell !== null;
+
+  async function handleSubmit() {
+    if (!canSubmit) return;
+
+    setWon(true);
+    setHintedCell(null);
+    setHintMessage("");
+    stopGameTimer();
+
+    const finalElapsed =
+      gameStartRef.current !== null ? Date.now() - gameStartRef.current : elapsedMs;
+    const starsEarned = getStarReward(level, finalElapsed);
+
+    setElapsedMs(finalElapsed);
+
+    if (username) {
+      setSubmitting(true);
+
+      await submitLevelScore({
+        levelId: level.id,
+        username,
+        mode: level.type,
+        size: level.size,
+        moves,
+        timeMs: finalElapsed,
+      });
+
+      await updateHighestLevel(username, level.id);
+      await refreshAllLeaderboards();
+
+      setSubmitting(false);
+    }
+
+    onComplete(starsEarned);
+  }
+
+  function handleUseHint() {
+    if (!canUseHint || !nextHintCell) return;
+
+    const spent = onSpendHintStar();
+
+    if (!spent) {
+      setHintMessage("You need at least 1 available star to buy a hint.");
+      return;
+    }
+
+    setHintedCell(nextHintCell);
+    setHintMessage(
+      nextHintCell.action === "fill"
+        ? "One required tile is outlined in red. Select it to use the hint."
+        : "The red-outlined tile is incorrect right now. Toggle it to use the hint."
+    );
+  }
 
   async function handleShareDailyChallenge() {
     const shareText = `I played today's Pivot daily challenge and finished in ${formatMs(
@@ -259,6 +335,9 @@ export default function LevelPlayer({
         <div className="flex flex-wrap items-center justify-center gap-3">
           <StatPill label="Moves" value={String(moves)} />
           <StatPill label="Timer" value={timerLabel} />
+          <StatPill label="Stars Banked" value={String(availableStars)} />
+          <StatPill label="Best Stars" value={`${bestStars}/3`} />
+          <StatPill label="Current Clear" value={`${currentStarReward}/3`} />
           {level.type === "memory" && (
             <StatPill
               label="Preview"
@@ -294,6 +373,7 @@ export default function LevelPlayer({
                 disabled={!hasStarted}
                 title="Your Build"
                 subtitle="Tap tiles to create the transformed result"
+                highlightedCell={hintedCell}
               />
             </div>
           </div>
@@ -319,6 +399,7 @@ export default function LevelPlayer({
                   ? "Study the pattern before it disappears"
                   : "Tap tiles to rebuild the pattern from memory"
               }
+              highlightedCell={!showMemoryPreview ? hintedCell : null}
             />
 
             {hasStarted && showMemoryPreview && (
@@ -341,11 +422,42 @@ export default function LevelPlayer({
               }}
               title="Complete the Symmetry"
               subtitle={symmetrySubtitle()}
+              highlightedCell={hintedCell}
             />
           </div>
         )}
 
         <div className="flex flex-wrap justify-center gap-3">
+          {hasStarted && !won && (
+            <>
+              <button
+                type="button"
+                onClick={handleUseHint}
+                disabled={!canUseHint}
+                className={`rounded-2xl px-5 py-2.5 text-sm font-semibold transition ${
+                  canUseHint
+                    ? "border border-amber-400/40 bg-amber-400/10 text-amber-200 hover:bg-amber-400/20"
+                    : "cursor-not-allowed border border-slate-700 bg-slate-800 text-slate-500"
+                }`}
+              >
+                Hint (-1 star)
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={!canSubmit}
+                className={`rounded-2xl px-5 py-2.5 text-sm font-semibold transition ${
+                  canSubmit
+                    ? "bg-cyan-400 text-slate-950 hover:bg-cyan-300"
+                    : "bg-slate-700 text-slate-400 cursor-not-allowed"
+                }`}
+              >
+                Submit
+              </button>
+            </>
+          )}
+
           <button
             onClick={initializeLevel}
             className="rounded-2xl border border-slate-700 bg-slate-900 px-5 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-slate-800"
@@ -370,9 +482,15 @@ export default function LevelPlayer({
           )}
         </div>
 
+        {hasStarted && !won && (
+          <div className="max-w-2xl rounded-2xl border border-amber-400/20 bg-amber-400/10 px-5 py-3 text-sm text-amber-100">
+            {hintMessage || "Hints outline one missing tile in red and cost 1 banked star."}
+          </div>
+        )}
+
         {won && (
           <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-5 py-3 text-sm font-semibold text-emerald-300">
-            Level complete!
+            Level complete! {currentStarReward}/3 stars for this run.
             {username ? (
               <span className="ml-2 text-emerald-200">
                 {submitting ? "Saving score…" : "Score saved."}
@@ -389,11 +507,18 @@ export default function LevelPlayer({
       <aside className="rounded-[28px] border border-slate-800 bg-slate-900/80 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
         <div className="mb-4">
           <div className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
-            Leaderboards
+            Stars + Leaderboards
           </div>
           <div className="mt-1 text-xs text-slate-500">
-            Compare scores and progression
+            Earn stars on fast clears and spend them on hints
           </div>
+        </div>
+
+        <div className="mb-4 rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-300">
+          <div className="font-semibold text-white">Speed thresholds</div>
+          <div className="mt-2 text-slate-400">3 stars: {formatThreshold(thresholds.threeStarMs)}</div>
+          <div className="text-slate-400">2 stars: {formatThreshold(thresholds.twoStarMs)}</div>
+          <div className="text-slate-400">1 star: finish the level</div>
         </div>
 
         <div className="mb-4 flex gap-2">
@@ -495,4 +620,69 @@ function formatMs(ms: number) {
   const seconds = totalSeconds % 60;
   const tenths = Math.floor((ms % 1000) / 100);
   return `${minutes}:${String(seconds).padStart(2, "0")}.${tenths}`;
+}
+
+function formatThreshold(ms: number) {
+  const totalSeconds = Math.ceil(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+type HintCell = {
+  row: number;
+  col: number;
+  action: "fill" | "toggle";
+};
+
+function getHintCell(grid: Grid, level: Level): HintCell | null {
+  for (let row = 0; row < grid.length; row++) {
+    for (let col = 0; col < grid[row].length; col++) {
+      if (level.type === "symmetry") {
+        if (!level.symmetrySourceSide) continue;
+        if (!isSymmetryCellEditable(level.size, level.symmetrySourceSide, row, col)) continue;
+      }
+
+      if (level.targetGrid[row][col] === 1 && grid[row][col] === 0) {
+        return { row, col, action: "fill" };
+      }
+    }
+  }
+
+  for (let row = 0; row < grid.length; row++) {
+    for (let col = 0; col < grid[row].length; col++) {
+      if (level.type === "symmetry") {
+        if (!level.symmetrySourceSide) continue;
+        if (!isSymmetryCellEditable(level.size, level.symmetrySourceSide, row, col)) continue;
+      }
+
+      if (level.targetGrid[row][col] !== grid[row][col]) {
+        return { row, col, action: "toggle" };
+      }
+    }
+  }
+
+  return null;
+}
+
+function getStarThresholds(level: Level) {
+  const baseSeconds =
+    level.type === "transform"
+      ? level.size * 7 + 8
+      : level.type === "memory"
+      ? level.size * 8 + Math.round((level.memoryPreviewMs ?? 2000) / 1000) + 8
+      : level.size * 6 + 7;
+
+  return {
+    threeStarMs: baseSeconds * 1000,
+    twoStarMs: Math.round(baseSeconds * 1.6 * 1000),
+  };
+}
+
+function getStarReward(level: Level, elapsedMs: number) {
+  const thresholds = getStarThresholds(level);
+
+  if (elapsedMs <= thresholds.threeStarMs) return 3;
+  if (elapsedMs <= thresholds.twoStarMs) return 2;
+  return 1;
 }
