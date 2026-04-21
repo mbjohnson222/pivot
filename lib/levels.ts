@@ -334,6 +334,102 @@ const C5J: Grid = [
   [0, 1, 0, 2, 1],
 ];
 
+const C4A: Grid = [
+  [1, 0, 2, 0],
+  [0, 1, 0, 2],
+  [2, 0, 1, 0],
+  [0, 2, 0, 1],
+];
+
+const C4B: Grid = [
+  [0, 2, 0, 1],
+  [1, 0, 2, 0],
+  [0, 1, 0, 2],
+  [2, 0, 1, 0],
+];
+
+const C4C: Grid = [
+  [1, 1, 0, 2],
+  [0, 2, 0, 1],
+  [2, 0, 1, 0],
+  [0, 1, 2, 0],
+];
+
+const C4D: Grid = [
+  [2, 0, 1, 0],
+  [0, 1, 0, 2],
+  [1, 0, 2, 0],
+  [0, 2, 0, 1],
+];
+
+const C4E: Grid = [
+  [0, 1, 0, 2],
+  [2, 0, 1, 0],
+  [0, 2, 0, 1],
+  [1, 0, 2, 0],
+];
+
+const C4F: Grid = [
+  [2, 1, 0, 1],
+  [0, 0, 2, 0],
+  [1, 2, 0, 2],
+  [0, 1, 0, 1],
+];
+
+const T6A: Grid = [
+  [0, 1, 1, 0, 0, 0],
+  [1, 1, 0, 0, 1, 0],
+  [0, 1, 0, 1, 1, 0],
+  [0, 0, 1, 1, 0, 0],
+  [1, 0, 1, 0, 1, 0],
+  [0, 0, 0, 1, 0, 0],
+];
+
+const T6B: Grid = [
+  [1, 0, 0, 1, 0, 0],
+  [1, 1, 0, 1, 1, 0],
+  [0, 1, 1, 0, 1, 0],
+  [0, 0, 1, 0, 0, 1],
+  [1, 0, 1, 1, 0, 0],
+  [0, 0, 0, 1, 0, 0],
+];
+
+const T6C: Grid = [
+  [0, 1, 0, 0, 1, 0],
+  [1, 1, 1, 0, 0, 0],
+  [0, 1, 0, 1, 1, 0],
+  [0, 0, 1, 1, 0, 1],
+  [1, 0, 0, 1, 0, 0],
+  [0, 0, 1, 0, 1, 0],
+];
+
+const T6D: Grid = [
+  [1, 1, 0, 0, 0, 1],
+  [0, 1, 0, 1, 1, 0],
+  [1, 0, 1, 0, 1, 0],
+  [0, 1, 1, 0, 0, 1],
+  [0, 0, 1, 1, 0, 0],
+  [1, 0, 0, 0, 1, 0],
+];
+
+const T6E: Grid = [
+  [0, 0, 1, 0, 1, 0],
+  [1, 1, 1, 0, 0, 1],
+  [0, 1, 0, 1, 0, 0],
+  [1, 0, 1, 1, 0, 0],
+  [0, 1, 0, 0, 1, 0],
+  [0, 0, 1, 0, 1, 1],
+];
+
+const T6F: Grid = [
+  [1, 0, 1, 0, 0, 1],
+  [0, 1, 1, 1, 0, 0],
+  [0, 0, 1, 0, 1, 0],
+  [1, 1, 0, 1, 0, 0],
+  [0, 1, 0, 0, 1, 1],
+  [0, 0, 1, 0, 0, 1],
+];
+
 const T4F: Grid = [
   [0, 1, 0, 1],
   [0, 1, 1, 0],
@@ -1270,70 +1366,108 @@ const hundred_5x5_advanced: Level[] = [
   makeMultiTransformLevel(297, T5M, ["rotate180", "flipY"]),
   makeMemoryLevel(298, M5I, 630),
   makeSymmetryLevel(299, S5D, "vertical", "right"),
-  makeMultiTransformLevel(300, T5N, ["flipY", "rotate180"]),
 ];
 
-const chromatic_5x5_endgame: Level[] = [
-  makeChromaticTransformLevel(301, C5A, "rotate90cw"),
-  makeChromaticTransformLevel(302, C5B, "flipX"),
-  makeChromaticTransformLevel(303, C5C, "rotate180"),
-  makeChromaticTransformLevel(304, C5D, "rotate90ccw"),
-  makeChromaticTransformLevel(305, C5E, "flipY"),
-  makeChromaticMultiTransformLevel(306, C5F, ["rotate90cw", "flipY"]),
-  makeChromaticMultiTransformLevel(307, C5G, ["flipX", "rotate180"]),
-  makeChromaticMultiTransformLevel(308, C5H, ["rotate90ccw", "flipX"]),
-  makeChromaticMultiTransformLevel(309, C5I, ["flipY", "rotate90cw"]),
-  makeChromaticMultiTransformLevel(310, C5J, ["rotate180", "flipY"]),
-
-  makeChromaticTransformLevel(311, C5B, "rotate90cw"),
-  makeChromaticTransformLevel(312, C5C, "flipX"),
-  makeChromaticTransformLevel(313, C5D, "rotate180"),
-  makeChromaticTransformLevel(314, C5E, "rotate90ccw"),
-  makeChromaticTransformLevel(315, C5F, "flipY"),
-  makeChromaticMultiTransformLevel(316, C5G, ["rotate90cw", "flipX"]),
-  makeChromaticMultiTransformLevel(317, C5H, ["flipY", "rotate180"]),
-  makeChromaticMultiTransformLevel(318, C5I, ["rotate90ccw", "flipY"]),
-  makeChromaticMultiTransformLevel(319, C5J, ["flipX", "rotate90cw"]),
-  makeChromaticMultiTransformLevel(320, C5A, ["rotate180", "flipX"]),
-
-  makeChromaticTransformLevel(321, C5C, "rotate90cw"),
-  makeChromaticTransformLevel(322, C5D, "flipX"),
-  makeChromaticTransformLevel(323, C5E, "rotate180"),
-  makeChromaticTransformLevel(324, C5F, "rotate90ccw"),
-  makeChromaticTransformLevel(325, C5G, "flipY"),
-  makeChromaticMultiTransformLevel(326, C5H, ["rotate90cw", "rotate180"]),
-  makeChromaticMultiTransformLevel(327, C5I, ["flipX", "rotate180"]),
-  makeChromaticMultiTransformLevel(328, C5J, ["rotate90ccw", "flipX"]),
-  makeChromaticMultiTransformLevel(329, C5A, ["flipY", "rotate90ccw"]),
-  makeChromaticMultiTransformLevel(330, C5B, ["rotate180", "flipY"]),
-
-  makeChromaticTransformLevel(331, C5D, "rotate90cw"),
-  makeChromaticTransformLevel(332, C5E, "flipX"),
-  makeChromaticTransformLevel(333, C5F, "rotate180"),
-  makeChromaticTransformLevel(334, C5G, "rotate90ccw"),
-  makeChromaticTransformLevel(335, C5H, "flipY"),
-  makeChromaticMultiTransformLevel(336, C5I, ["rotate90cw", "flipY"]),
-  makeChromaticMultiTransformLevel(337, C5J, ["flipX", "rotate90ccw"]),
-  makeChromaticMultiTransformLevel(338, C5A, ["rotate180", "flipY"]),
-  makeChromaticMultiTransformLevel(339, C5B, ["flipY", "rotate90cw"]),
-  makeChromaticMultiTransformLevel(340, C5C, ["rotate90ccw", "rotate180"]),
-
-  makeChromaticTransformLevel(341, C5E, "rotate90cw"),
-  makeChromaticTransformLevel(342, C5F, "flipX"),
-  makeChromaticTransformLevel(343, C5G, "rotate180"),
-  makeChromaticTransformLevel(344, C5H, "rotate90ccw"),
-  makeChromaticTransformLevel(345, C5I, "flipY"),
-  makeChromaticMultiTransformLevel(346, C5J, ["rotate90cw", "flipX"]),
-  makeChromaticMultiTransformLevel(347, C5A, ["flipY", "rotate180"]),
-  makeChromaticMultiTransformLevel(348, C5B, ["rotate90ccw", "flipY"]),
-  makeChromaticMultiTransformLevel(349, C5C, ["flipX", "rotate90cw"]),
-  makeChromaticMultiTransformLevel(350, C5D, ["rotate180", "flipX"]),
+const CHROMATIC_MIXED_SOURCES: Grid[] = [
+  C4A,
+  C5A,
+  C4B,
+  C5B,
+  C4C,
+  C5C,
+  C4D,
+  C5D,
+  C4E,
+  C5E,
+  C4F,
+  C5F,
+  C5G,
+  C5H,
+  C5I,
+  C5J,
 ];
+
+const CHROMATIC_RECIPES: TransformKind[][] = [
+  ["rotate90cw"],
+  ["flipX"],
+  ["rotate180"],
+  ["rotate90ccw"],
+  ["flipY"],
+  ["rotate90cw", "flipY"],
+  ["flipX", "rotate180"],
+  ["rotate90ccw", "flipX"],
+  ["flipY", "rotate90cw"],
+  ["rotate180", "flipX"],
+];
+
+const MONO_MIXED_SOURCES: Grid[] = [
+  T5I,
+  T6A,
+  T5J,
+  T6B,
+  T5K,
+  T6C,
+  T5L,
+  T6D,
+  T5M,
+  T6E,
+  T5N,
+  T6F,
+  T5O,
+  T5P,
+];
+
+function buildChromaticMixedLevels(startId: number, count: number): Level[] {
+  return Array.from({ length: count }, (_, index) => {
+    const id = startId + index;
+    const source = CHROMATIC_MIXED_SOURCES[index % CHROMATIC_MIXED_SOURCES.length];
+    const transforms = CHROMATIC_RECIPES[index % CHROMATIC_RECIPES.length];
+
+    return transforms.length === 1
+      ? makeChromaticTransformLevel(id, source, transforms[0])
+      : makeChromaticMultiTransformLevel(id, source, transforms);
+  });
+}
+
+function buildMonochromeGrandmasterLevels(startId: number, count: number): Level[] {
+  return Array.from({ length: count }, (_, index) => {
+    const id = startId + index;
+    const source = MONO_MIXED_SOURCES[index % MONO_MIXED_SOURCES.length];
+    const modeIndex = index % 4;
+
+    if (modeIndex === 0) {
+      return makeTransformLevel(id, source, CHROMATIC_RECIPES[index % 5][0]);
+    }
+
+    if (modeIndex === 1) {
+      const previewMs = Math.max(650, 1000 - index * 4);
+      return makeMemoryLevel(id, source, previewMs);
+    }
+
+    if (modeIndex === 2) {
+      const transforms = CHROMATIC_RECIPES[index % CHROMATIC_RECIPES.length];
+      return makeMultiTransformLevel(
+        id,
+        source,
+        transforms.length === 1 ? [transforms[0], "flipY"] : transforms
+      );
+    }
+
+    const symmetryKind: SymmetryKind = index % 8 < 4 ? "vertical" : "horizontal";
+    const sourceSide: SymmetrySourceSide[] =
+      symmetryKind === "vertical" ? ["left", "right"] : ["top", "bottom"];
+    return makeSymmetryLevel(id, source, symmetryKind, sourceSide[index % sourceSide.length]);
+  });
+}
+
+const chromatic_mixed_endgame: Level[] = buildChromaticMixedLevels(300, 100);
+const monochrome_grandmaster: Level[] = buildMonochromeGrandmasterLevels(400, 101);
 
 export const levels: Level[] = [
   ...first50_4x4,
   ...second50_4x4,
   ...hundred_5x5,
   ...hundred_5x5_advanced,
-  ...chromatic_5x5_endgame,
+  ...chromatic_mixed_endgame,
+  ...monochrome_grandmaster,
 ];

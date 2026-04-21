@@ -1,11 +1,14 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import type { Level } from "@/types/game";
 
 type SpaceLevelMapProps = {
   levels: Level[];
   currentLevelId: number;
+  focusLevelId: number;
   completedLevelIds: number[];
+  starsByLevel: Record<string, number>;
   dailyLevelId: number | null;
   onSelectLevel: (levelId: number) => void;
 };
@@ -33,6 +36,8 @@ const LEVELS_PER_PLANET = 50;
 const TOP_OFFSET = 110;
 const CLUSTER_HEIGHT = 300;
 const CLUSTER_GAP = 78;
+const MOBILE_X_SCALE = 0.76;
+const MOBILE_X_CENTER = 50;
 
 type StarPoint = {
   x: number;
@@ -188,7 +193,9 @@ const CONSTELLATION_TEMPLATES: ConstellationTemplate[] = [
 export default function SpaceLevelMap({
   levels,
   currentLevelId,
+  focusLevelId,
   completedLevelIds,
+  starsByLevel,
   dailyLevelId,
   onSelectLevel,
 }: SpaceLevelMapProps) {
@@ -197,9 +204,61 @@ export default function SpaceLevelMap({
   const highestUnlockedId =
     highestCompleted > 0 ? Math.min(highestCompleted + 1, levels.length) : 1;
   const sectors = buildPlanetSectors(levels);
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const [isPhoneViewport, setIsPhoneViewport] = useState(false);
+  const [isTabletViewport, setIsTabletViewport] = useState(false);
+
+  useEffect(() => {
+    const phoneMediaQuery = window.matchMedia("(max-width: 767px)");
+    const mediaQuery = window.matchMedia("(min-width: 768px) and (max-width: 1180px)");
+    const updateViewport = () => {
+      setIsPhoneViewport(phoneMediaQuery.matches);
+      setIsTabletViewport(mediaQuery.matches);
+    };
+
+    updateViewport();
+    phoneMediaQuery.addEventListener("change", updateViewport);
+    mediaQuery.addEventListener("change", updateViewport);
+
+    return () => {
+      phoneMediaQuery.removeEventListener("change", updateViewport);
+      mediaQuery.removeEventListener("change", updateViewport);
+    };
+  }, []);
+
+  useEffect(() => {
+    function centerOnLevel() {
+      const scroller = scrollerRef.current;
+      if (!scroller) return;
+
+      const activeNode = scroller.querySelector<HTMLElement>(
+        `[data-level-id="${focusLevelId}"]`
+      );
+      if (!activeNode) return;
+
+      activeNode.scrollIntoView({
+        behavior: "auto",
+        block: "center",
+        inline: "center",
+      });
+    }
+
+    const rafId = window.requestAnimationFrame(centerOnLevel);
+    const timeoutIds = [120, 320, 700, 1100].map((delay) =>
+      window.setTimeout(centerOnLevel, delay)
+    );
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      timeoutIds.forEach((timeoutId) => window.clearTimeout(timeoutId));
+    };
+  }, [focusLevelId, levels.length, completedLevelIds.length]);
 
   return (
-    <section className="relative overflow-hidden rounded-[36px] border border-white/10 bg-[radial-gradient(circle_at_top,rgba(74,222,255,0.16),transparent_24%),linear-gradient(180deg,rgba(7,11,28,0.98),rgba(2,6,23,0.96))] p-5 shadow-[0_30px_120px_rgba(2,6,23,0.7)] sm:p-8">
+    <section
+      ref={scrollerRef}
+      className="relative h-full min-h-[calc(100dvh-var(--safe-top)-12rem)] overflow-y-auto overflow-x-hidden rounded-[36px] border border-white/10 bg-[radial-gradient(circle_at_top,rgba(74,222,255,0.16),transparent_24%),linear-gradient(180deg,rgba(7,11,28,0.98),rgba(2,6,23,0.96))] p-4 shadow-[0_30px_120px_rgba(2,6,23,0.7)] sm:min-h-0 sm:h-auto sm:p-8"
+    >
       <div className="pointer-events-none absolute inset-0 opacity-70">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_15%,rgba(255,255,255,0.18),transparent_1.4%),radial-gradient(circle_at_72%_28%,rgba(255,255,255,0.14),transparent_1%),radial-gradient(circle_at_35%_62%,rgba(255,255,255,0.16),transparent_1.2%),radial-gradient(circle_at_84%_74%,rgba(255,255,255,0.12),transparent_1%),radial-gradient(circle_at_52%_88%,rgba(255,255,255,0.14),transparent_1%)]" />
         <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-gradient-to-b from-transparent via-cyan-300/25 to-transparent" />
@@ -219,7 +278,7 @@ export default function SpaceLevelMap({
           </p>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="hidden gap-3 sm:grid-cols-3 lg:grid">
           <MapStat
             label="Completed"
             value={`${completedLevelIds.length}`}
@@ -243,7 +302,12 @@ export default function SpaceLevelMap({
           const sectorCompleted = sector.levels.filter((level) => completed.has(level.id)).length;
           const isCurrentPlanet =
             currentLevelId >= sector.startLevel && currentLevelId <= sector.endLevel;
-          const constellation = buildConstellationLayout(sector.index, sector.levels.length);
+          const constellation = buildConstellationLayout(
+            sector.index,
+            sector.levels.length,
+            isPhoneViewport,
+            isTabletViewport
+          );
 
           return (
             <article
@@ -301,7 +365,7 @@ export default function SpaceLevelMap({
 
               <div className="relative overflow-x-auto">
                 <div
-                  className="relative min-w-[720px]"
+                  className="relative w-full"
                   style={{ height: `${constellation.height}px` }}
                 >
                   <svg
@@ -313,14 +377,14 @@ export default function SpaceLevelMap({
                     {constellation.positions.map((position, index) => (
                       <g key={`guide-${index}`}>
                         <circle
-                          cx={position.x}
+                          cx={position.renderX}
                           cy={position.y}
                           r="1.7"
                           fill={sector.theme.trail}
                           opacity="0.18"
                         />
                         <circle
-                          cx={position.x}
+                          cx={position.renderX}
                           cy={position.y}
                           r="0.48"
                           fill="white"
@@ -332,9 +396,9 @@ export default function SpaceLevelMap({
                     {constellation.edges.map(([from, to], index) => (
                       <line
                         key={`${from}-${to}-${index}`}
-                        x1={constellation.positions[from].x}
+                        x1={constellation.positions[from].renderX}
                         y1={constellation.positions[from].y}
-                        x2={constellation.positions[to].x}
+                        x2={constellation.positions[to].renderX}
                         y2={constellation.positions[to].y}
                         stroke={sector.theme.trail}
                         strokeWidth="1.15"
@@ -351,47 +415,71 @@ export default function SpaceLevelMap({
                     const isCurrent = level.id === currentLevelId;
                     const isUnlocked = level.id <= highestUnlockedId;
                     const isDaily = dailyLevelId === level.id;
+                    const earnedStars = starsByLevel[String(level.id)] ?? 0;
 
                     return (
-                      <button
+                      <div
                         key={level.id}
-                        type="button"
-                        onClick={() => {
-                          if (isUnlocked) {
-                            onSelectLevel(level.id);
-                          }
-                        }}
-                        disabled={!isUnlocked}
-                        className={[
-                          "absolute flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-full border text-center transition duration-200",
-                          isUnlocked
-                            ? "cursor-pointer hover:scale-105"
-                            : "cursor-not-allowed opacity-55",
-                          isCompleted
-                            ? "border-emerald-200/40 bg-emerald-300/18 text-emerald-50 shadow-[0_0_20px_rgba(16,185,129,0.28)]"
-                            : isCurrent
-                            ? `border-cyan-200/50 bg-cyan-300/20 text-white ${sector.theme.activeGlow}`
-                            : isUnlocked
-                            ? "border-slate-300/20 bg-slate-800/85 text-slate-100"
-                            : "border-slate-700/60 bg-slate-900/85 text-slate-500",
-                        ].join(" ")}
+                        className="absolute -translate-x-1/2 -translate-y-1/2"
                         style={{
-                          left: `${position.x}%`,
+                          left: `${position.renderX}%`,
                           top: `${position.y}px`,
                         }}
-                        aria-label={`Level ${level.id}${isUnlocked ? "" : ", locked"}`}
                       >
-                        <span className="pointer-events-none absolute inset-[-12%] rounded-full bg-white/8 blur-md" />
-                        <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-300/80">
-                          Lvl
-                        </span>
-                        <span className="text-lg font-semibold">{level.id}</span>
-                        {isDaily && (
-                          <span className="absolute -right-1 -top-1 rounded-full border border-cyan-200/40 bg-cyan-300 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.16em] text-slate-950">
-                            Daily
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (isUnlocked) {
+                              onSelectLevel(level.id);
+                            }
+                          }}
+                          disabled={!isUnlocked}
+                          className={[
+                            "relative flex h-11 w-11 flex-col items-center justify-center rounded-full border text-center transition duration-200 sm:h-14 sm:w-14 md:h-[3.8rem] md:w-[3.8rem] lg:h-16 lg:w-16",
+                            isUnlocked
+                              ? "cursor-pointer hover:scale-105"
+                              : "cursor-not-allowed opacity-55",
+                            isCompleted
+                              ? "border-emerald-200/40 bg-emerald-300/18 text-emerald-50 shadow-[0_0_20px_rgba(16,185,129,0.28)]"
+                              : isCurrent
+                              ? `border-cyan-200/50 bg-cyan-300/20 text-white ${sector.theme.activeGlow}`
+                              : isUnlocked
+                              ? "border-slate-300/20 bg-slate-800/85 text-slate-100"
+                              : "border-slate-700/60 bg-slate-900/85 text-slate-500",
+                          ].join(" ")}
+                          data-level-id={level.id}
+                          aria-label={`Level ${level.id}${isUnlocked ? "" : ", locked"}`}
+                        >
+                          <span className="pointer-events-none absolute inset-[-12%] rounded-full bg-white/8 blur-md" />
+                          <span className="text-[8px] font-semibold uppercase tracking-[0.14em] text-slate-300/80 sm:text-[9px] md:text-[10px] lg:text-[10px]">
+                            Lvl
                           </span>
-                        )}
-                      </button>
+                          <span className="text-xs font-semibold sm:text-base md:text-lg lg:text-lg">
+                            {level.id}
+                          </span>
+                          {isDaily && (
+                            <span className="absolute -right-1 -top-1 rounded-full border border-cyan-200/40 bg-cyan-300 px-1 py-0.5 text-[7px] font-bold uppercase tracking-[0.12em] text-slate-950 sm:px-1.5 sm:text-[8px] lg:text-[9px]">
+                              Daily
+                            </span>
+                          )}
+                        </button>
+
+                        <div className="mt-1.5 flex h-5 items-center justify-center gap-0.5">
+                          {Array.from({ length: 3 }, (_, starIndex) => (
+                            <span
+                              key={`${level.id}-star-${starIndex}`}
+                              className={
+                                starIndex < earnedStars
+                                  ? "text-[10px] text-amber-300 sm:text-xs md:text-sm"
+                                  : "text-[10px] text-slate-600 sm:text-xs md:text-sm"
+                              }
+                              aria-hidden="true"
+                            >
+                              ★
+                            </span>
+                          ))}
+                        </div>
+                      </div>
                     );
                   })}
                 </div>
@@ -439,26 +527,45 @@ function MapStat({
   );
 }
 
-function buildConstellationLayout(sectorIndex: number, count: number) {
-  const positions: Array<{ x: number; y: number }> = [];
+function buildConstellationLayout(
+  sectorIndex: number,
+  count: number,
+  isPhoneViewport = false,
+  isTabletViewport = false
+) {
+  const positions: Array<{ x: number; y: number; mobileX: number; tabletX: number; renderX: number }> = [];
   const edges: Array<[number, number]> = [];
   const clusterTotal = Math.ceil(count / 10);
-  const height = TOP_OFFSET + clusterTotal * CLUSTER_HEIGHT + (clusterTotal - 1) * CLUSTER_GAP;
+  const mobileXScale = isPhoneViewport ? 0.62 : MOBILE_X_SCALE;
+  const tabletXScale = isTabletViewport ? 1.02 : 1;
+  const yScale = isTabletViewport ? 2.9 : 2.5;
+  const clusterHeight = isTabletViewport ? 340 : CLUSTER_HEIGHT;
+  const clusterGap = isTabletViewport ? 98 : CLUSTER_GAP;
+  const xStretch = isTabletViewport ? 1.06 : 1;
+  const height = TOP_OFFSET + clusterTotal * clusterHeight + (clusterTotal - 1) * clusterGap;
 
   for (let clusterIndex = 0; clusterIndex < clusterTotal; clusterIndex++) {
     const template =
       CONSTELLATION_TEMPLATES[(sectorIndex + clusterIndex) % CONSTELLATION_TEMPLATES.length];
     const clusterStart = clusterIndex * 10;
     const pointsInCluster = Math.min(10, count - clusterStart);
-    const yOffset = TOP_OFFSET + clusterIndex * (CLUSTER_HEIGHT + CLUSTER_GAP);
+    const yOffset = TOP_OFFSET + clusterIndex * (clusterHeight + clusterGap);
     const xShift = clusterIndex % 2 === 0 ? 0 : 6;
 
     for (let pointIndex = 0; pointIndex < pointsInCluster; pointIndex++) {
       const point = template.points[pointIndex];
+      const stretchedX = MOBILE_X_CENTER + (point.x + xShift - MOBILE_X_CENTER) * xStretch;
+      const desktopX = Math.min(88, Math.max(12, stretchedX));
+      const mobileX = MOBILE_X_CENTER + (desktopX - MOBILE_X_CENTER) * mobileXScale;
+      const tabletX = MOBILE_X_CENTER + (desktopX - MOBILE_X_CENTER) * tabletXScale;
+      const renderX = isPhoneViewport ? mobileX : isTabletViewport ? tabletX : desktopX;
 
       positions.push({
-        x: Math.min(86, Math.max(14, point.x + xShift)),
-        y: yOffset + point.y * 2.5,
+        x: desktopX,
+        mobileX,
+        tabletX,
+        renderX,
+        y: yOffset + point.y * yScale,
       });
     }
 

@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { setStoredString } from "@/lib/storage";
 
 type Props = {
+  username: string | null;
   onUsernameSet: (username: string) => void;
 };
 
-export default function UsernameGate({ onUsernameSet }: Props) {
+export default function UsernameGate({ username, onUsernameSet }: Props) {
   const [value, setValue] = useState(() => {
     if (typeof window === "undefined") {
       return "";
@@ -37,10 +39,14 @@ export default function UsernameGate({ onUsernameSet }: Props) {
       return;
     }
 
-    localStorage.setItem("pivot-username", trimmed);
+    void setStoredString("pivot-username", trimmed);
     setSavedUsername(trimmed);
     onUsernameSet(trimmed);
     setMessage("Username saved.");
+  }
+
+  if (username) {
+    return null;
   }
 
   return (

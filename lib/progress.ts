@@ -1,10 +1,21 @@
+import { getStoredJson, setStoredJson } from "@/lib/storage";
+
 const STORAGE_KEY = "pivot-progress";
+
+export const MAX_FUEL = 5;
+export const FUEL_REGEN_MS = 30 * 60 * 1000;
 
 export type Progress = {
   completedLevels: number[];
   starsByLevel: Record<string, number>;
   totalStarsEarned: number;
   totalStarsSpent: number;
+  fuel: number;
+  fuelUpdatedAt: number;
+  dailyAttemptsUsedByDate: Record<string, number>;
+  dailyBonusAttemptUsedByDate: Record<string, boolean>;
+  dailyCompletedByDate: Record<string, boolean>;
+  dailyBestTimeMsByDate: Record<string, number>;
 };
 
 const EMPTY_PROGRESS: Progress = {
@@ -12,30 +23,57 @@ const EMPTY_PROGRESS: Progress = {
   starsByLevel: {},
   totalStarsEarned: 0,
   totalStarsSpent: 0,
+  fuel: MAX_FUEL,
+  fuelUpdatedAt: Date.now(),
+  dailyAttemptsUsedByDate: {},
+  dailyBonusAttemptUsedByDate: {},
+  dailyCompletedByDate: {},
+  dailyBestTimeMsByDate: {},
 };
 
-export function getProgress(): Progress {
+export function getProgress(now = Date.now()): Progress {
   if (typeof window === "undefined") {
     return EMPTY_PROGRESS;
   }
 
   const raw = localStorage.getItem(STORAGE_KEY);
+  const normalized = raw ? normalizeProgress(safeJsonParse(raw)) : EMPTY_PROGRESS;
+  const hydrated = hydrateFuel(normalized, now);
 
-  if (!raw) return EMPTY_PROGRESS;
-
-  try {
-    return normalizeProgress(JSON.parse(raw));
-  } catch {
-    return EMPTY_PROGRESS;
+  if (raw !== JSON.stringify(hydrated)) {
+    saveProgress(hydrated);
   }
+
+  return hydrated;
 }
 
 export function saveProgress(progress: Progress) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
+  void setStoredJson(STORAGE_KEY, progress);
 }
 
 export function getAvailableStars(progress = getProgress()) {
   return Math.max(0, progress.totalStarsEarned - progress.totalStarsSpent);
+}
+
+export function getFuelState(progress = getProgress(), now = Date.now()) {
+  const hydrated = hydrateFuel(progress, now);
+
+  if (hydrated.fuel >= MAX_FUEL) {
+    return {
+      fuel: MAX_FUEL,
+      maxFuel: MAX_FUEL,
+      nextFuelInMs: 0,
+    };
+  }
+
+  const elapsed = Math.max(0, now - hydrated.fuelUpdatedAt);
+
+  return {
+    fuel: hydrated.fuel,
+    maxFuel: MAX_FUEL,
+    nextFuelInMs: Math.max(0, FUEL_REGEN_MS - elapsed),
+  };
 }
 
 export function spendStars(amount: number) {
@@ -48,6 +86,37 @@ export function spendStars(amount: number) {
   const next = {
     ...progress,
     totalStarsSpent: progress.totalStarsSpent + amount,
+  };
+
+  saveProgress(next);
+  return next;
+}
+
+export function spendFuel(amount: number) {
+  const progress = getProgress();
+
+  if (amount <= 0 || progress.fuel < amount) {
+    return null;
+  }
+
+  const now = Date.now();
+  const next = {
+    ...progress,
+    fuel: progress.fuel - amount,
+    fuelUpdatedAt: progress.fuel >= MAX_FUEL ? now : progress.fuelUpdatedAt,
+  };
+
+  saveProgress(next);
+  return next;
+}
+
+export function grantFuel(amount: number) {
+  const progress = getProgress();
+  const now = Date.now();
+  const next = {
+    ...progress,
+    fuel: Math.min(MAX_FUEL, progress.fuel + Math.max(0, Math.floor(amount))),
+    fuelUpdatedAt: now,
   };
 
   saveProgress(next);
@@ -75,19 +144,94 @@ export function recordLevelCompletion(levelId: number, starsEarned: number) {
   return next;
 }
 
-export function markLevelComplete(levelId: number) {
-  const progress = getProgress();
+export function getDailyPuzzleState(dateKey: string, progress = getProgress()) {
+  const attemptsUsed = progress.dailyAttemptsUsedByDate[dateKey] ?? 0;
+  const bonusAttemptUsed = progress.dailyBonusAttemptUsedByDate[dateKey] ?? false;
+  const completed = progress.dailyCompletedByDate[dateKey] ?? false;
+  const attemptsGranted = 1 + (bonusAttemptUsed ? 1 : 0);
 
-  if (!progress.completedLevels.includes(levelId)) {
-    const next = {
-      ...progress,
-      completedLevels: [...progress.completedLevels, levelId].sort((a, b) => a - b),
-    };
-    saveProgress(next);
-    return next;
+  return {
+    attemptsUsed,
+    attemptsGranted,
+    attemptsRemaining: Math.max(0, attemptsGranted - attemptsUsed),
+    bonusAttemptUsed,
+    completed,
+  };
+}
+
+export function consumeDailyPuzzleAttempt(dateKey: string) {
+  const progress = getProgress();
+  const dailyState = getDailyPuzzleState(dateKey, progress);
+
+  if (dailyState.attemptsRemaining <= 0) {
+    return null;
   }
 
-  return progress;
+  const next = normalizeProgress(progress);
+  next.dailyAttemptsUsedByDate[dateKey] = dailyState.attemptsUsed + 1;
+  saveProgress(next);
+  return next;
+}
+
+export function unlockDailyBonusAttempt(dateKey: string) {
+  const progress = getProgress();
+  const next = normalizeProgress(progress);
+
+  if (next.dailyBonusAttemptUsedByDate[dateKey]) {
+    return null;
+  }
+
+  next.dailyBonusAttemptUsedByDate[dateKey] = true;
+  saveProgress(next);
+  return next;
+}
+
+export function markDailyPuzzleCompleted(dateKey: string, elapsedMs?: number) {
+  const progress = getProgress();
+  const next = normalizeProgress(progress);
+  next.dailyCompletedByDate[dateKey] = true;
+
+  if (typeof elapsedMs === "number" && Number.isFinite(elapsedMs) && elapsedMs >= 0) {
+    const previousBest = next.dailyBestTimeMsByDate[dateKey];
+    next.dailyBestTimeMsByDate[dateKey] =
+      typeof previousBest === "number" ? Math.min(previousBest, elapsedMs) : elapsedMs;
+  }
+
+  saveProgress(next);
+  return next;
+}
+
+export async function rehydrateProgress(now = Date.now()) {
+  const stored = await getStoredJson<Progress>(STORAGE_KEY);
+  const hydrated = hydrateFuel(normalizeProgress(stored), now);
+
+  if (typeof window !== "undefined") {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(hydrated));
+  }
+
+  return hydrated;
+}
+
+function hydrateFuel(progress: Progress, now: number) {
+  if (progress.fuel >= MAX_FUEL) {
+    return progress.fuel === MAX_FUEL ? progress : { ...progress, fuel: MAX_FUEL };
+  }
+
+  const elapsed = Math.max(0, now - progress.fuelUpdatedAt);
+  const gainedFuel = Math.floor(elapsed / FUEL_REGEN_MS);
+
+  if (gainedFuel <= 0) {
+    return progress;
+  }
+
+  const fuel = Math.min(MAX_FUEL, progress.fuel + gainedFuel);
+  const remainder = elapsed % FUEL_REGEN_MS;
+
+  return {
+    ...progress,
+    fuel,
+    fuelUpdatedAt: fuel >= MAX_FUEL ? now : now - remainder,
+  };
 }
 
 function normalizeProgress(raw: unknown): Progress {
@@ -112,5 +256,53 @@ function normalizeProgress(raw: unknown): Progress {
     totalStarsEarned:
       typeof progress.totalStarsEarned === "number" ? progress.totalStarsEarned : 0,
     totalStarsSpent: typeof progress.totalStarsSpent === "number" ? progress.totalStarsSpent : 0,
+    fuel:
+      typeof progress.fuel === "number"
+        ? Math.max(0, Math.min(MAX_FUEL, Math.floor(progress.fuel)))
+        : MAX_FUEL,
+    fuelUpdatedAt:
+      typeof progress.fuelUpdatedAt === "number" ? progress.fuelUpdatedAt : Date.now(),
+    dailyAttemptsUsedByDate:
+      progress.dailyAttemptsUsedByDate &&
+      typeof progress.dailyAttemptsUsedByDate === "object"
+        ? Object.fromEntries(
+            Object.entries(progress.dailyAttemptsUsedByDate).filter(
+              ([key, value]) => typeof key === "string" && typeof value === "number"
+            )
+          )
+        : {},
+    dailyBonusAttemptUsedByDate:
+      progress.dailyBonusAttemptUsedByDate &&
+      typeof progress.dailyBonusAttemptUsedByDate === "object"
+        ? Object.fromEntries(
+            Object.entries(progress.dailyBonusAttemptUsedByDate).filter(
+              ([key, value]) => typeof key === "string" && typeof value === "boolean"
+            )
+          )
+        : {},
+    dailyCompletedByDate:
+      progress.dailyCompletedByDate && typeof progress.dailyCompletedByDate === "object"
+        ? Object.fromEntries(
+            Object.entries(progress.dailyCompletedByDate).filter(
+              ([key, value]) => typeof key === "string" && typeof value === "boolean"
+            )
+          )
+        : {},
+    dailyBestTimeMsByDate:
+      progress.dailyBestTimeMsByDate && typeof progress.dailyBestTimeMsByDate === "object"
+        ? Object.fromEntries(
+            Object.entries(progress.dailyBestTimeMsByDate).filter(
+              ([key, value]) => typeof key === "string" && typeof value === "number"
+            )
+          )
+        : {},
   };
+}
+
+function safeJsonParse(raw: string) {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
 }

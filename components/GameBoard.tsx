@@ -22,6 +22,14 @@ export default function GameBoard({
   highlightedCell,
 }: GameBoardProps) {
   const size = grid.length;
+  const cellSizeClass =
+    size >= 10
+      ? "h-6 w-6 rounded-lg sm:h-8 sm:w-8"
+      : size >= 6
+      ? "h-8 w-8 rounded-xl sm:h-10 sm:w-10"
+      : "h-12 w-12 rounded-2xl sm:h-14 sm:w-14";
+  const boardPaddingClass = size >= 10 ? "p-2" : size >= 6 ? "p-2.5" : "p-3";
+  const boardGap = size >= 10 ? "0.375rem" : size >= 6 ? "0.45rem" : "0.5rem";
 
   return (
     <div className="flex flex-col items-center gap-3">
@@ -38,9 +46,10 @@ export default function GameBoard({
 
       <div className="rounded-[28px] border border-slate-700/70 bg-slate-900/90 p-4 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
         <div
-          className="grid gap-2 rounded-[22px] bg-slate-800/90 p-3"
+          className={`grid rounded-[22px] bg-slate-800/90 ${boardPaddingClass}`}
           style={{
             gridTemplateColumns: `repeat(${size}, minmax(0, 1fr))`,
+            gap: boardGap,
           }}
         >
           {grid.map((row, r) =>
@@ -64,8 +73,8 @@ export default function GameBoard({
                     cell === 1 ? "filled" : "empty"
                   }`}
                   className={[
-                    "h-12 w-12 rounded-2xl border transition duration-150",
-                    "sm:h-14 sm:w-14",
+                    cellSizeClass,
+                    "border transition duration-150",
                     cell === 1
                       ? editable
                         ? "border-cyan-200/80 bg-gradient-to-br from-cyan-300 to-cyan-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_8px_18px_rgba(6,182,212,0.28)]"

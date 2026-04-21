@@ -13,6 +13,12 @@ export type ProgressLeaderboardEntry = {
   updatedAt: string;
 };
 
+export type SharedUserProgress = ProgressLeaderboardEntry & {
+  starsByLevel: Record<string, number>;
+  totalStarsEarned: number;
+  totalStarsSpent: number;
+};
+
 export async function getLevelLeaderboard(levelId: number): Promise<LeaderboardEntry[]> {
   const { data, error } = await supabase
     .from("level_scores")
@@ -59,6 +65,36 @@ export async function getProgressLeaderboard(): Promise<ProgressLeaderboardEntry
   }));
 }
 
+export async function getUserProgress(username: string): Promise<SharedUserProgress | null> {
+  const trimmed = username.trim();
+
+  if (!trimmed) return null;
+
+  const { data, error } = await supabase
+    .from("user_progress")
+    .select("username, highest_level_id, updated_at, stars_by_level, total_stars_earned, total_stars_spent")
+    .eq("username", trimmed)
+    .maybeSingle();
+
+  if (error) {
+    console.error("getUserProgress error:", error);
+    return null;
+  }
+
+  if (!data) return null;
+
+  return {
+    username: data.username,
+    highestLevelId: data.highest_level_id,
+    updatedAt: data.updated_at,
+    starsByLevel: normalizeStarsByLevel(data.stars_by_level),
+    totalStarsEarned:
+      typeof data.total_stars_earned === "number" ? Math.max(0, data.total_stars_earned) : 0,
+    totalStarsSpent:
+      typeof data.total_stars_spent === "number" ? Math.max(0, data.total_stars_spent) : 0,
+  };
+}
+
 export async function updateHighestLevel(username: string, levelId: number) {
   const trimmed = username.trim();
 
@@ -103,6 +139,54 @@ export async function updateHighestLevel(username: string, levelId: number) {
 
   if (updateError) {
     console.error("updateHighestLevel update error:", updateError);
+    return false;
+  }
+
+  return true;
+}
+
+export async function syncSharedProgress(input: {
+  username: string;
+  highestLevelId: number;
+  starsByLevel: Record<string, number>;
+  totalStarsSpent: number;
+}) {
+  const trimmed = input.username.trim();
+
+  if (!trimmed) return false;
+
+  const existing = await getUserProgress(trimmed);
+  const mergedStarsByLevel = mergeStarsByLevel(existing?.starsByLevel ?? {}, input.starsByLevel);
+  const highestLevelId = Math.max(existing?.highestLevelId ?? 0, input.highestLevelId);
+  const totalStarsEarned = sumStarsByLevel(mergedStarsByLevel);
+  const totalStarsSpent = Math.max(existing?.totalStarsSpent ?? 0, input.totalStarsSpent);
+  const payload = {
+    username: trimmed,
+    highest_level_id: highestLevelId,
+    stars_by_level: mergedStarsByLevel,
+    total_stars_earned: totalStarsEarned,
+    total_stars_spent: totalStarsSpent,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (!existing) {
+    const { error: insertError } = await supabase.from("user_progress").insert(payload);
+
+    if (insertError) {
+      console.error("syncSharedProgress insert error:", insertError);
+      return false;
+    }
+
+    return true;
+  }
+
+  const { error: updateError } = await supabase
+    .from("user_progress")
+    .update(payload)
+    .eq("username", trimmed);
+
+  if (updateError) {
+    console.error("syncSharedProgress update error:", updateError);
     return false;
   }
 
@@ -197,4 +281,36 @@ export async function getDailyChallenge() {
   }
 
   return data;
+}
+
+function normalizeStarsByLevel(raw: unknown): Record<string, number> {
+  if (!raw || typeof raw !== "object") {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(raw).flatMap(([key, value]) =>
+      typeof value === "number" ? [[key, Math.max(0, Math.min(3, Math.floor(value)))]] : []
+    )
+  );
+}
+
+function mergeStarsByLevel(
+  base: Record<string, number>,
+  incoming: Record<string, number>
+): Record<string, number> {
+  const merged = { ...normalizeStarsByLevel(base) };
+
+  for (const [levelId, stars] of Object.entries(normalizeStarsByLevel(incoming))) {
+    merged[levelId] = Math.max(merged[levelId] ?? 0, stars);
+  }
+
+  return merged;
+}
+
+function sumStarsByLevel(starsByLevel: Record<string, number>) {
+  return Object.values(normalizeStarsByLevel(starsByLevel)).reduce(
+    (total, stars) => total + stars,
+    0
+  );
 }

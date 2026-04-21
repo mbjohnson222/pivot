@@ -13,34 +13,53 @@ import {
 } from "@/lib/board";
 import {
   getLevelLeaderboard,
-  getProgressLeaderboard,
   submitLevelScore,
   updateHighestLevel,
   type LeaderboardEntry,
-  type ProgressLeaderboardEntry,
 } from "@/lib/scores";
 
 type LevelPlayerProps = {
   level: Level;
   username: string | null;
   availableStars: number;
-  bestStars: number;
+  availableFuel: number;
+  nextFuelInMs: number;
+  startUnitsAvailable?: number;
+  startButtonLabel?: string;
+  lockedStartLabel?: string;
+  instructionSuffix?: string | null;
+  showLeaderboard?: boolean;
+  showReplayButton?: boolean;
+  showNextLevelButton?: boolean;
+  awardsStars?: boolean;
+  onWatchAdForFuel?: () => Promise<boolean>;
+  watchAdLabel?: string;
+  onConsumeStart?: () => Promise<boolean> | boolean;
   onSpendHintStar: () => boolean;
-  onComplete: (starsEarned: number) => void;
+  onComplete: (starsEarned: number, elapsedMs: number) => void;
 };
-
-type LeaderboardTab = "level" | "progress";
 
 export default function LevelPlayer({
   level,
   username,
   availableStars,
-  bestStars,
+  availableFuel,
+  nextFuelInMs,
+  startUnitsAvailable,
+  startButtonLabel,
+  lockedStartLabel,
+  instructionSuffix,
+  showLeaderboard = true,
+  showReplayButton = true,
+  showNextLevelButton = true,
+  awardsStars = true,
+  onWatchAdForFuel,
+  watchAdLabel,
+  onConsumeStart,
   onSpendHintStar,
   onComplete,
 }: LevelPlayerProps) {
   const [playerGrid, setPlayerGrid] = useState(createEmptyGrid(level.size));
-  const [activePaint, setActivePaint] = useState<0 | 1 | 2>(1);
   const [showMemoryPreview, setShowMemoryPreview] = useState(false);
   const [hintedCell, setHintedCell] = useState<HintCell | null>(null);
   const [hintMessage, setHintMessage] = useState("");
@@ -48,14 +67,19 @@ export default function LevelPlayer({
   const [moves, setMoves] = useState(0);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [levelLeaderboard, setLevelLeaderboard] = useState<LeaderboardEntry[]>([]);
-  const [progressLeaderboard, setProgressLeaderboard] = useState<ProgressLeaderboardEntry[]>([]);
+  const [adLoading, setAdLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
-  const [leaderboardTab, setLeaderboardTab] = useState<LeaderboardTab>("level");
+  const [paintPickerCell, setPaintPickerCell] = useState<{ row: number; col: number } | null>(
+    null
+  );
+  const startAvailability = startUnitsAvailable ?? availableFuel;
 
   const previewTimerRef = useRef<number | null>(null);
   const gameTimerRef = useRef<number | null>(null);
   const gameStartRef = useRef<number | null>(null);
+  const playAreaRef = useRef<HTMLDivElement | null>(null);
+  const gameplayFocusRef = useRef<HTMLDivElement | null>(null);
 
   function clearPreviewTimer() {
     if (previewTimerRef.current !== null) {
@@ -88,21 +112,12 @@ export default function LevelPlayer({
     setLevelLeaderboard(rows);
   }
 
-  async function refreshProgressLeaderboard() {
-    const rows = await getProgressLeaderboard();
-    setProgressLeaderboard(rows);
-  }
-
-  async function refreshAllLeaderboards() {
-    await Promise.all([refreshLevelLeaderboard(), refreshProgressLeaderboard()]);
-  }
-
   function resetLevelState() {
     clearPreviewTimer();
     stopGameTimer();
     setHintedCell(null);
     setHintMessage("");
-    setActivePaint(1);
+    setPaintPickerCell(null);
     setSubmitting(false);
     setWon(false);
     setMoves(0);
@@ -121,13 +136,21 @@ export default function LevelPlayer({
     resetLevelState();
   }
 
-  function handleStart() {
-    if (hasStarted) return;
+  async function handleStart() {
+    if (hasStarted || startAvailability <= 0) return;
+
+    if (onConsumeStart) {
+      const allowed = await onConsumeStart();
+
+      if (!allowed) {
+        return;
+      }
+    }
 
     setHasStarted(true);
     setHintedCell(null);
     setHintMessage("");
-    setActivePaint(1);
+    setPaintPickerCell(null);
     setWon(false);
     setMoves(0);
     setElapsedMs(0);
@@ -167,7 +190,7 @@ export default function LevelPlayer({
       stopGameTimer();
       setHintedCell(null);
       setHintMessage("");
-      setActivePaint(1);
+      setPaintPickerCell(null);
       setSubmitting(false);
       setWon(false);
       setMoves(0);
@@ -182,15 +205,11 @@ export default function LevelPlayer({
     void Promise.resolve().then(async () => {
       if (cancelled) return;
 
-      const [levelRows, progressRows] = await Promise.all([
-        getLevelLeaderboard(level.id),
-        getProgressLeaderboard(),
-      ]);
+      const levelRows = await getLevelLeaderboard(level.id);
 
       if (cancelled) return;
 
       setLevelLeaderboard(levelRows);
-      setProgressLeaderboard(progressRows);
     });
 
     return () => {
@@ -199,6 +218,21 @@ export default function LevelPlayer({
       stopGameTimer();
     };
   }, [level]);
+
+  useEffect(() => {
+    if (!hasStarted) return;
+
+    const timeoutId = window.setTimeout(() => {
+      (gameplayFocusRef.current ?? playAreaRef.current)?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 80);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [hasStarted, level.id]);
 
   function handleCellClick(row: number, col: number) {
     if (!hasStarted || won || showMemoryPreview) return;
@@ -216,13 +250,23 @@ export default function LevelPlayer({
     }
 
     if (level.type === "chromatic") {
-      setPlayerGrid((prev) => {
-        const nextValue = prev[row][col] === activePaint ? 0 : activePaint;
-        return setCell(prev, row, col, nextValue);
-      });
+      setPaintPickerCell({ row, col });
     } else {
       setPlayerGrid((prev) => toggleCell(prev, row, col));
+      setMoves((prev) => prev + 1);
     }
+  }
+
+  function handleChromaticPaintSelection(value: 0 | 1 | 2) {
+    if (!paintPickerCell || level.type !== "chromatic") return;
+
+    const { row, col } = paintPickerCell;
+
+    setPlayerGrid((prev) => {
+      const nextValue = prev[row][col] === value ? 0 : value;
+      return setCell(prev, row, col, nextValue);
+    });
+    setPaintPickerCell(null);
     setMoves((prev) => prev + 1);
   }
 
@@ -249,7 +293,7 @@ export default function LevelPlayer({
 
     setElapsedMs(finalElapsed);
 
-    if (username) {
+    if (username && showLeaderboard) {
       setSubmitting(true);
 
       await submitLevelScore({
@@ -262,12 +306,12 @@ export default function LevelPlayer({
       });
 
       await updateHighestLevel(username, level.id);
-      await refreshAllLeaderboards();
+      await refreshLevelLeaderboard();
 
       setSubmitting(false);
     }
 
-    onComplete(starsEarned);
+    onComplete(starsEarned, finalElapsed);
   }
 
   function handleUseHint() {
@@ -288,28 +332,23 @@ export default function LevelPlayer({
     );
   }
 
-  async function handleShareDailyChallenge() {
-    const shareText = `I played today's Pivot daily challenge and finished in ${formatMs(
-      elapsedMs
-    )} with ${moves} moves. Can you beat me?`;
+  async function handleWatchAd() {
+    if (adLoading || !onWatchAdForFuel) return;
 
-    const shareUrl =
-      typeof window !== "undefined"
-        ? `${window.location.origin}/?daily=1&level=${level.id}`
-        : "";
+    setAdLoading(true);
+    setHintMessage("");
 
     try {
-      if (navigator.share) {
-        await navigator.share({
-          title: "Pivot Daily Challenge",
-          text: shareText,
-          url: shareUrl,
-        });
-      } else {
-        await navigator.clipboard.writeText(`${shareText} ${shareUrl}`);
-        alert("Share text copied to clipboard.");
+      const rewarded = await onWatchAdForFuel();
+
+      if (!rewarded) {
+        setHintMessage("The rewarded ad was not completed, so no fuel was added.");
       }
-    } catch {}
+    } catch {
+      setHintMessage("The rewarded ad could not be loaded right now. Please try again.");
+    } finally {
+      setAdLoading(false);
+    }
   }
 
   const modeLabel =
@@ -331,8 +370,8 @@ export default function LevelPlayer({
 
   return (
     <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_340px]">
-      <div className="flex flex-col items-center gap-8">
-        <div className="text-center">
+      <div ref={playAreaRef} className="flex flex-col items-center gap-5">
+        <div className="flex flex-col items-center gap-2 text-center">
           <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900/70 px-4 py-1.5 text-sm text-slate-300">
             <span className="font-semibold">Level {level.id}</span>
             <span className="text-slate-500">•</span>
@@ -341,31 +380,66 @@ export default function LevelPlayer({
             <span>{level.size}×{level.size}</span>
           </div>
 
-          <h2 className="mx-auto max-w-2xl text-2xl font-bold leading-tight text-white">
-            {level.prompt}
-          </h2>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <StatPill label="Timer" value={timerLabel} />
+            <StatPill label="Stars Banked" value={String(availableStars)} />
+            {level.type === "memory" && (
+              <StatPill
+                label="Preview"
+                value={`${Math.round((level.memoryPreviewMs ?? 2000) / 1000)}s`}
+              />
+            )}
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-center justify-center gap-3">
-          <StatPill label="Moves" value={String(moves)} />
-          <StatPill label="Timer" value={timerLabel} />
-          <StatPill label="Stars Banked" value={String(availableStars)} />
-          <StatPill label="Best Stars" value={`${bestStars}/3`} />
-          <StatPill label="Current Clear" value={`${currentStarReward}/3`} />
-          {level.type === "memory" && (
-            <StatPill
-              label="Preview"
-              value={`${Math.round((level.memoryPreviewMs ?? 2000) / 1000)}s`}
-            />
+        <div
+          ref={gameplayFocusRef}
+          className="h-px w-full scroll-mt-20 sm:scroll-mt-24"
+          aria-hidden="true"
+        />
+
+        <div className="max-w-2xl rounded-2xl border border-amber-400/20 bg-amber-400/10 px-5 py-3 text-center text-sm text-amber-100">
+          {level.prompt}
+          {!hasStarted && instructionSuffix && (
+            <span className="ml-2 text-amber-200">
+              {instructionSuffix}
+            </span>
+          )}
+          {!hasStarted && startAvailability <= 0 && nextFuelInMs > 0 && !startUnitsAvailable && (
+            <span className="ml-2 text-rose-200">
+              Next fuel arrives in {formatThreshold(nextFuelInMs)}.
+            </span>
           )}
         </div>
 
         {!hasStarted && (
           <button
             onClick={handleStart}
-            className="rounded-2xl bg-cyan-400 px-6 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300"
+            disabled={startAvailability <= 0}
+            className={`rounded-2xl px-6 py-3 text-sm font-semibold transition ${
+              startAvailability > 0
+                ? "bg-cyan-400 text-slate-950 hover:bg-cyan-300"
+                : "cursor-not-allowed bg-slate-700 text-slate-400"
+            }`}
           >
-            Start Level
+            {startAvailability > 0
+              ? startButtonLabel ?? "Start Level"
+              : lockedStartLabel ?? "Out of Fuel"}
+          </button>
+        )}
+
+        {!hasStarted && startAvailability <= 0 && onWatchAdForFuel && (
+          <button
+            type="button"
+            onClick={handleWatchAd}
+            disabled={adLoading}
+            className={`rounded-2xl px-6 py-3 text-sm font-semibold transition ${
+              adLoading
+                ? "cursor-wait bg-amber-200/20 text-amber-100"
+                : "bg-amber-400 text-slate-950 hover:bg-amber-300"
+            }`}
+          >
+            {adLoading ? "Loading Rewarded Ad..." : watchAdLabel ?? "Watch Ad for +1 Fuel"}
           </button>
         )}
 
@@ -385,30 +459,6 @@ export default function LevelPlayer({
             </div>
 
             <div className="flex flex-col items-center gap-4">
-              {level.type === "chromatic" && (
-                <div className="flex flex-wrap items-center justify-center gap-3 rounded-2xl border border-slate-700 bg-slate-900/70 px-4 py-3">
-                  <span className="text-sm font-semibold text-slate-300">Paint</span>
-                  <PaintButton
-                    label="Clear"
-                    active={activePaint === 0}
-                    colorClass="bg-slate-700"
-                    onClick={() => setActivePaint(0)}
-                  />
-                  <PaintButton
-                    label="Cyan"
-                    active={activePaint === 1}
-                    colorClass="bg-cyan-400"
-                    onClick={() => setActivePaint(1)}
-                  />
-                  <PaintButton
-                    label="Amber"
-                    active={activePaint === 2}
-                    colorClass="bg-amber-400"
-                    onClick={() => setActivePaint(2)}
-                  />
-                </div>
-              )}
-
               <div className="flex justify-center">
                 <GameBoard
                   grid={playerGrid}
@@ -417,7 +467,7 @@ export default function LevelPlayer({
                   title="Your Build"
                   subtitle={
                     level.type === "chromatic"
-                      ? "Choose a paint color, then tap tiles to place the correct color"
+                      ? "Tap any tile to choose its color"
                       : "Tap tiles to create the transformed result"
                   }
                   highlightedCell={hintedCell}
@@ -475,7 +525,7 @@ export default function LevelPlayer({
           </div>
         )}
 
-        <div className="flex flex-wrap justify-center gap-3">
+        <div className="sticky bottom-0 z-20 -mx-2 flex flex-wrap justify-center gap-3 border-t border-white/10 bg-[linear-gradient(180deg,rgba(8,14,30,0.45),rgba(8,14,30,0.96))] px-2 py-3 backdrop-blur-xl sm:-mx-3 sm:px-3">
           {hasStarted && !won && (
             <>
               <button
@@ -506,23 +556,18 @@ export default function LevelPlayer({
             </>
           )}
 
-          <button
-            onClick={initializeLevel}
-            className="rounded-2xl border border-slate-700 bg-slate-900 px-5 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-slate-800"
-          >
-            Replay Level
-          </button>
-
-          <button
-            onClick={handleShareDailyChallenge}
-            className="rounded-2xl border border-cyan-500/40 bg-cyan-500/10 px-5 py-2.5 text-sm font-semibold text-cyan-300 transition hover:bg-cyan-500/20"
-          >
-            Share Daily Challenge
-          </button>
-
-          {won && (
+          {showReplayButton && (
             <button
-              onClick={() => onComplete(getStarReward(level, elapsedMs))}
+              onClick={initializeLevel}
+              className="rounded-2xl border border-slate-700 bg-slate-900 px-5 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-slate-800"
+            >
+              Replay Level
+            </button>
+          )}
+
+          {won && showNextLevelButton && (
+            <button
+              onClick={() => onComplete(getStarReward(level, elapsedMs), elapsedMs)}
               className="rounded-2xl bg-cyan-400 px-5 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300"
             >
               Next Level
@@ -536,23 +581,77 @@ export default function LevelPlayer({
           </div>
         )}
 
+        {level.type === "chromatic" && paintPickerCell && (
+          <div
+            className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/55 px-4 backdrop-blur-sm"
+            onClick={() => setPaintPickerCell(null)}
+          >
+            <div
+              className="w-full max-w-xs rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(10,15,31,0.98),rgba(6,11,22,0.98))] p-5 shadow-[0_28px_90px_rgba(0,0,0,0.5)]"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="text-center">
+                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-200">
+                  Choose Tile Color
+                </div>
+                <p className="mt-2 text-sm text-slate-300">
+                  Select the color for row {paintPickerCell.row + 1}, column{" "}
+                  {paintPickerCell.col + 1}.
+                </p>
+              </div>
+
+              <div className="mt-5 grid gap-3">
+                <PaintPickerButton
+                  label="Clear"
+                  colorClass="bg-slate-700"
+                  onClick={() => handleChromaticPaintSelection(0)}
+                />
+                <PaintPickerButton
+                  label="Cyan"
+                  colorClass="bg-cyan-400"
+                  onClick={() => handleChromaticPaintSelection(1)}
+                />
+                <PaintPickerButton
+                  label="Amber"
+                  colorClass="bg-amber-400"
+                  onClick={() => handleChromaticPaintSelection(2)}
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setPaintPickerCell(null)}
+                className="mt-4 w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-slate-800"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
         {won && (
           <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-5 py-3 text-sm font-semibold text-emerald-300">
-            Level complete! {currentStarReward}/3 stars for this run.
-            {username ? (
+            {awardsStars
+              ? `Level complete! ${currentStarReward}/3 stars for this run.`
+              : "Daily puzzle complete!"}
+            {awardsStars && elapsedMs > 30_000 && !startUnitsAvailable && (
+              <span className="ml-2 text-amber-200">This clear cost 1 fuel.</span>
+            )}
+            {username && showLeaderboard ? (
               <span className="ml-2 text-emerald-200">
                 {submitting ? "Saving score…" : "Score saved."}
               </span>
-            ) : (
+            ) : !username && showLeaderboard ? (
               <span className="ml-2 text-amber-200">
                 Save a username to join the leaderboard.
               </span>
-            )}
+            ) : null}
           </div>
         )}
       </div>
 
-      <aside className="rounded-[28px] border border-slate-800 bg-slate-900/80 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
+      {showLeaderboard && (
+        <aside className="rounded-[28px] border border-slate-800 bg-slate-900/80 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
         <div className="mb-4">
           <div className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">
             Stars + Leaderboards
@@ -569,86 +668,33 @@ export default function LevelPlayer({
           <div className="text-slate-400">1 star: finish the level</div>
         </div>
 
-        <div className="mb-4 flex gap-2">
-          <button
-            onClick={() => setLeaderboardTab("level")}
-            className={`rounded-xl px-3 py-2 text-sm font-semibold transition ${
-              leaderboardTab === "level"
-                ? "bg-cyan-400 text-slate-950"
-                : "border border-slate-700 bg-slate-950/60 text-slate-300 hover:bg-slate-800"
-            }`}
-          >
-            Level
-          </button>
+        <div className="space-y-2">
+          {levelLeaderboard.length === 0 ? (
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-400">
+              No scores yet. Be the first.
+            </div>
+          ) : (
+            levelLeaderboard.map((entry, index) => (
+              <div
+                key={`${entry.username}-${entry.timeMs}-${index}`}
+                className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950/60 px-4 py-3"
+              >
+                <div>
+                  <div className="text-sm font-semibold text-white">
+                    #{index + 1} {entry.username}
+                  </div>
+                  <div className="text-xs text-slate-400">{entry.moves} moves</div>
+                </div>
 
-          <button
-            onClick={() => setLeaderboardTab("progress")}
-            className={`rounded-xl px-3 py-2 text-sm font-semibold transition ${
-              leaderboardTab === "progress"
-                ? "bg-cyan-400 text-slate-950"
-                : "border border-slate-700 bg-slate-950/60 text-slate-300 hover:bg-slate-800"
-            }`}
-          >
-            Progress
-          </button>
+                <div className="text-sm font-semibold text-cyan-300">
+                  {formatMs(entry.timeMs)}
+                </div>
+              </div>
+            ))
+          )}
         </div>
-
-        {leaderboardTab === "level" && (
-          <div className="space-y-2">
-            {levelLeaderboard.length === 0 ? (
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-400">
-                No scores yet. Be the first.
-              </div>
-            ) : (
-              levelLeaderboard.map((entry, index) => (
-                <div
-                  key={`${entry.username}-${entry.timeMs}-${index}`}
-                  className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950/60 px-4 py-3"
-                >
-                  <div>
-                    <div className="text-sm font-semibold text-white">
-                      #{index + 1} {entry.username}
-                    </div>
-                    <div className="text-xs text-slate-400">{entry.moves} moves</div>
-                  </div>
-
-                  <div className="text-sm font-semibold text-cyan-300">
-                    {formatMs(entry.timeMs)}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        )}
-
-        {leaderboardTab === "progress" && (
-          <div className="space-y-2">
-            {progressLeaderboard.length === 0 ? (
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-400">
-                No progress recorded yet.
-              </div>
-            ) : (
-              progressLeaderboard.map((entry, index) => (
-                <div
-                  key={`${entry.username}-${entry.highestLevelId}-${index}`}
-                  className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950/60 px-4 py-3"
-                >
-                  <div>
-                    <div className="text-sm font-semibold text-white">
-                      #{index + 1} {entry.username}
-                    </div>
-                    <div className="text-xs text-slate-400">Highest level reached</div>
-                  </div>
-
-                  <div className="text-sm font-semibold text-cyan-300">
-                    {entry.highestLevelId}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        )}
-      </aside>
+        </aside>
+      )}
     </div>
   );
 }
@@ -662,13 +708,11 @@ function StatPill({ label, value }: { label: string; value: string }) {
   );
 }
 
-function PaintButton({
-  active,
+function PaintPickerButton({
   colorClass,
   label,
   onClick,
 }: {
-  active: boolean;
   colorClass: string;
   label: string;
   onClick: () => void;
@@ -677,13 +721,9 @@ function PaintButton({
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-semibold transition ${
-        active
-          ? "border-white/40 bg-white/10 text-white"
-          : "border-slate-700 bg-slate-950/60 text-slate-300 hover:bg-slate-800"
-      }`}
+      className="inline-flex items-center gap-3 rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-sm font-semibold text-slate-200 transition hover:bg-slate-800"
     >
-      <span className={`h-3.5 w-3.5 rounded-full ${colorClass}`} />
+      <span className={`h-4 w-4 rounded-full ${colorClass}`} />
       <span>{label}</span>
     </button>
   );
@@ -718,7 +758,7 @@ function getHintCell(grid: Grid, level: Level): HintCell | null {
         if (!isSymmetryCellEditable(level.size, level.symmetrySourceSide, row, col)) continue;
       }
 
-      if (level.targetGrid[row][col] === 1 && grid[row][col] === 0) {
+      if (level.targetGrid[row][col] !== 0 && grid[row][col] === 0) {
         return { row, col, action: "fill" };
       }
     }
@@ -743,14 +783,14 @@ function getHintCell(grid: Grid, level: Level): HintCell | null {
 function getStarThresholds(level: Level) {
   const baseSeconds =
     level.type === "transform" || level.type === "chromatic"
-      ? level.size * 7 + 8
+      ? level.size * 4 + 4
       : level.type === "memory"
-      ? level.size * 8 + Math.round((level.memoryPreviewMs ?? 2000) / 1000) + 8
-      : level.size * 6 + 7;
+      ? level.size * 5 + Math.round((level.memoryPreviewMs ?? 2000) / 1000) + 4
+      : level.size * 4 + 3;
 
   return {
     threeStarMs: baseSeconds * 1000,
-    twoStarMs: Math.round(baseSeconds * 1.6 * 1000),
+    twoStarMs: Math.round(baseSeconds * 1.3 * 1000),
   };
 }
 
