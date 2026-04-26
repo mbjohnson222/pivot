@@ -251,6 +251,49 @@ export default function LevelPlayer({
     };
   }, [hasStarted, level.id]);
 
+  async function completeSolvedLevel(finalMoves: number) {
+    if (won || timedOut || showMemoryPreview) return;
+
+    setWon(true);
+    setHintedCell(null);
+    setHintMessage("");
+    stopGameTimer();
+
+    const finalElapsed =
+      gameStartRef.current !== null ? Date.now() - gameStartRef.current : elapsedMs;
+    const starsEarned = getStarReward(level, finalElapsed);
+
+    setElapsedMs(finalElapsed);
+
+    if (username && showLeaderboard) {
+      setSubmitting(true);
+
+      await submitLevelScore({
+        levelId: level.id,
+        username,
+        mode: level.type,
+        size: level.size,
+        moves: finalMoves,
+        timeMs: finalElapsed,
+      });
+
+      await updateHighestLevel(username, level.id);
+      await refreshLevelLeaderboard();
+
+      setSubmitting(false);
+    }
+
+    onComplete(starsEarned, finalElapsed);
+  }
+
+  function queueAutoSubmit(nextGrid: Grid, nextMoves: number) {
+    if (!gridsEqual(nextGrid, level.targetGrid)) return;
+
+    window.setTimeout(() => {
+      void completeSolvedLevel(nextMoves);
+    }, 0);
+  }
+
   function handleCellClick(row: number, col: number) {
     if (!hasStarted || won || timedOut || showMemoryPreview) return;
 
@@ -269,8 +312,11 @@ export default function LevelPlayer({
     if (level.type === "chromatic") {
       setPaintPickerCell({ row, col });
     } else {
-      setPlayerGrid((prev) => toggleCell(prev, row, col));
-      setMoves((prev) => prev + 1);
+      const nextGrid = toggleCell(playerGrid, row, col);
+      const nextMoves = moves + 1;
+      setPlayerGrid(nextGrid);
+      setMoves(nextMoves);
+      queueAutoSubmit(nextGrid, nextMoves);
     }
   }
 
@@ -278,13 +324,14 @@ export default function LevelPlayer({
     if (!paintPickerCell || level.type !== "chromatic") return;
 
     const { row, col } = paintPickerCell;
+    const nextValue = playerGrid[row][col] === value ? 0 : value;
+    const nextGrid = setCell(playerGrid, row, col, nextValue);
+    const nextMoves = moves + 1;
 
-    setPlayerGrid((prev) => {
-      const nextValue = prev[row][col] === value ? 0 : value;
-      return setCell(prev, row, col, nextValue);
-    });
+    setPlayerGrid(nextGrid);
     setPaintPickerCell(null);
-    setMoves((prev) => prev + 1);
+    setMoves(nextMoves);
+    queueAutoSubmit(nextGrid, nextMoves);
   }
 
   const remainingMs = level.countdownMs ? Math.max(0, level.countdownMs - elapsedMs) : elapsedMs;
@@ -309,37 +356,7 @@ export default function LevelPlayer({
 
   async function handleSubmit() {
     if (!canSubmit) return;
-
-    setWon(true);
-    setHintedCell(null);
-    setHintMessage("");
-    stopGameTimer();
-
-    const finalElapsed =
-      gameStartRef.current !== null ? Date.now() - gameStartRef.current : elapsedMs;
-    const starsEarned = getStarReward(level, finalElapsed);
-
-    setElapsedMs(finalElapsed);
-
-    if (username && showLeaderboard) {
-      setSubmitting(true);
-
-      await submitLevelScore({
-        levelId: level.id,
-        username,
-        mode: level.type,
-        size: level.size,
-        moves,
-        timeMs: finalElapsed,
-      });
-
-      await updateHighestLevel(username, level.id);
-      await refreshLevelLeaderboard();
-
-      setSubmitting(false);
-    }
-
-    onComplete(starsEarned, finalElapsed);
+    await completeSolvedLevel(moves);
   }
 
   function handleUseHint() {
