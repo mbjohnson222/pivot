@@ -14,6 +14,7 @@ export type Progress = {
   totalStarsEarned: number;
   totalStarsSpent: number;
   fuel: number;
+  fuelReserve: number;
   fuelUpdatedAt: number;
   dailyAttemptsUsedByDate: Record<string, number>;
   dailyBonusAttemptUsedByDate: Record<string, boolean>;
@@ -27,6 +28,7 @@ const EMPTY_PROGRESS: Progress = {
   totalStarsEarned: 0,
   totalStarsSpent: 0,
   fuel: MAX_FUEL,
+  fuelReserve: 0,
   fuelUpdatedAt: Date.now(),
   dailyAttemptsUsedByDate: {},
   dailyBonusAttemptUsedByDate: {},
@@ -79,6 +81,7 @@ export function getFuelState(progress = getProgress(), now = Date.now()) {
   return {
     fuel: hydrated.fuel,
     maxFuel: MAX_FUEL,
+    reserveFuel: hydrated.fuelReserve,
     nextFuelInMs: Math.max(0, FUEL_REGEN_MS - elapsed),
   };
 }
@@ -113,16 +116,21 @@ export function spendFuel(amount: number) {
     fuelUpdatedAt: progress.fuel >= MAX_FUEL ? now : progress.fuelUpdatedAt,
   };
 
-  saveProgress(next);
-  return next;
+  const replenished = applyFuelReserveFill(next, now);
+  saveProgress(replenished);
+  return replenished;
 }
 
 export function grantFuel(amount: number) {
   const progress = getProgress();
   const now = Date.now();
+  const normalizedAmount = Math.max(0, Math.floor(amount));
+  const liveFuelSpace = Math.max(0, MAX_FUEL - progress.fuel);
+  const liveFuelGain = Math.min(liveFuelSpace, normalizedAmount);
   const next = {
     ...progress,
-    fuel: Math.min(MAX_FUEL, progress.fuel + Math.max(0, Math.floor(amount))),
+    fuel: progress.fuel + liveFuelGain,
+    fuelReserve: progress.fuelReserve + Math.max(0, normalizedAmount - liveFuelGain),
     fuelUpdatedAt: now,
   };
 
@@ -242,24 +250,41 @@ export async function setActiveProgressAccount(accountId: string | null) {
 }
 
 function hydrateFuel(progress: Progress, now: number) {
-  if (progress.fuel >= MAX_FUEL) {
-    return progress.fuel === MAX_FUEL ? progress : { ...progress, fuel: MAX_FUEL };
+  const reserveFilled = applyFuelReserveFill(progress, now);
+
+  if (reserveFilled.fuel >= MAX_FUEL) {
+    return reserveFilled.fuel === MAX_FUEL ? reserveFilled : { ...reserveFilled, fuel: MAX_FUEL };
   }
 
-  const elapsed = Math.max(0, now - progress.fuelUpdatedAt);
+  const elapsed = Math.max(0, now - reserveFilled.fuelUpdatedAt);
   const gainedFuel = Math.floor(elapsed / FUEL_REGEN_MS);
 
   if (gainedFuel <= 0) {
-    return progress;
+    return reserveFilled;
   }
 
-  const fuel = Math.min(MAX_FUEL, progress.fuel + gainedFuel);
+  const fuel = Math.min(MAX_FUEL, reserveFilled.fuel + gainedFuel);
   const remainder = elapsed % FUEL_REGEN_MS;
 
   return {
-    ...progress,
+    ...reserveFilled,
     fuel,
     fuelUpdatedAt: fuel >= MAX_FUEL ? now : now - remainder,
+  };
+}
+
+function applyFuelReserveFill(progress: Progress, now: number) {
+  if (progress.fuel >= MAX_FUEL || progress.fuelReserve <= 0) {
+    return progress;
+  }
+
+  const refillAmount = Math.min(MAX_FUEL - progress.fuel, progress.fuelReserve);
+
+  return {
+    ...progress,
+    fuel: progress.fuel + refillAmount,
+    fuelReserve: progress.fuelReserve - refillAmount,
+    fuelUpdatedAt: now,
   };
 }
 
@@ -289,6 +314,8 @@ function normalizeProgress(raw: unknown): Progress {
       typeof progress.fuel === "number"
         ? Math.max(0, Math.min(MAX_FUEL, Math.floor(progress.fuel)))
         : MAX_FUEL,
+    fuelReserve:
+      typeof progress.fuelReserve === "number" ? Math.max(0, Math.floor(progress.fuelReserve)) : 0,
     fuelUpdatedAt:
       typeof progress.fuelUpdatedAt === "number" ? progress.fuelUpdatedAt : Date.now(),
     dailyAttemptsUsedByDate:

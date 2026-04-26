@@ -11,6 +11,14 @@ import { getCurrentIdentity, onAuthStateChange, signOutUser } from "@/lib/auth";
 import { buildDailyPuzzle, getTodayDailyKey } from "@/lib/daily";
 import { levels } from "@/lib/levels";
 import {
+  isNativePurchasePlatform,
+  loadStoreProducts,
+  purchaseStoreItem,
+  STORE_CATALOG,
+  type LoadedStoreProducts,
+  type StoreProductId,
+} from "@/lib/purchases";
+import {
   consumeDailyPuzzleAttempt,
   getAvailableStars,
   getDailyPuzzleState,
@@ -54,6 +62,7 @@ export default function HomePage() {
     return getResumeLevelIndex(getProgress());
   });
   const [username, setUsername] = useState<string | null>(null);
+  const [accountId, setAccountId] = useState<string | null>(null);
   const [dailyLevelId, setDailyLevelId] = useState<number | null>(null);
   const [activeOverlay, setActiveOverlay] = useState<"campaign" | "daily" | null>(null);
   const [storageHydrated, setStorageHydrated] = useState(false);
@@ -64,6 +73,10 @@ export default function HomePage() {
   const [starAdMessage, setStarAdMessage] = useState<string | null>(null);
   const [utilityMenuOpen, setUtilityMenuOpen] = useState(false);
   const [utilityTab, setUtilityTab] = useState<"daily" | "leaderboard" | "store">("store");
+  const [storeProducts, setStoreProducts] = useState<LoadedStoreProducts>({});
+  const [storeLoading, setStoreLoading] = useState(false);
+  const [storeMessage, setStoreMessage] = useState<string | null>(null);
+  const [purchaseLoadingId, setPurchaseLoadingId] = useState<StoreProductId | null>(null);
 
   const dailyKey = useMemo(() => getTodayDailyKey(), []);
   const dailyPuzzle = useMemo(() => buildDailyPuzzle(dailyKey), [dailyKey]);
@@ -93,6 +106,7 @@ export default function HomePage() {
 
         setProgress(savedProgress);
         setLevelIndex(getResumeLevelIndex(savedProgress));
+        setAccountId(identity?.accountId ?? null);
         setUsername(identity?.username ?? null);
 
         setStorageHydrated(true);
@@ -203,6 +217,7 @@ export default function HomePage() {
         const savedProgress = await rehydrateProgress();
         setProgress(savedProgress);
         setLevelIndex(getResumeLevelIndex(savedProgress));
+        setAccountId(identity?.accountId ?? null);
         setUsername(identity?.username ?? null);
       })();
     });
@@ -243,6 +258,51 @@ export default function HomePage() {
       window.removeEventListener("storage", handleStorage);
     };
   }, []);
+
+  useEffect(() => {
+    if (!utilityMenuOpen || utilityTab !== "store" || !accountId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      if (!cancelled) {
+        setStoreLoading(true);
+      }
+
+      try {
+        const products = await loadStoreProducts(accountId);
+
+        if (cancelled) {
+          return;
+        }
+
+        setStoreProducts(products);
+        setStoreMessage(
+          Object.keys(products).length > 0
+            ? null
+            : "The store is ready, but no products came back yet. Check RevenueCat product setup."
+        );
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        setStoreMessage(
+          error instanceof Error ? error.message : "The store could not be loaded right now."
+        );
+      } finally {
+        if (!cancelled) {
+          setStoreLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId, utilityMenuOpen, utilityTab]);
 
   function selectLevel(levelId: number) {
     const index = levels.findIndex((candidate) => candidate.id === levelId);
@@ -438,6 +498,58 @@ export default function HomePage() {
 
   function closeLevelOverlay() {
     setActiveOverlay(null);
+  }
+
+  async function handleStorePurchase(productId: StoreProductId) {
+    if (!accountId) {
+      setStoreMessage("Sign in again before making a purchase.");
+      return;
+    }
+
+    setPurchaseLoadingId(productId);
+    setStoreMessage(null);
+
+    try {
+      const reward = await purchaseStoreItem(accountId, productId, storeProducts);
+      let nextProgress = getProgress();
+
+      if (reward.fuel > 0) {
+        nextProgress = grantFuel(reward.fuel);
+      }
+
+      if (reward.stars > 0) {
+        nextProgress = grantStars(reward.stars);
+      }
+
+      setProgress(nextProgress);
+
+      if (username && reward.stars > 0) {
+        void syncSharedProgress({
+          username,
+          highestLevelId:
+            nextProgress.completedLevels.length > 0 ? Math.max(...nextProgress.completedLevels) : 0,
+          starsByLevel: nextProgress.starsByLevel,
+          totalStarsSpent: nextProgress.totalStarsSpent,
+        });
+      }
+
+      setStoreMessage(
+        reward.fuel > 0
+          ? `${reward.fuel} fuel added. Extra fuel is stored and auto-refills your tank as you play.`
+          : `${reward.stars} stars added to your account.`
+      );
+    } catch (error) {
+      const purchaseError = error as { userCancelled?: boolean } | Error;
+      if ("userCancelled" in purchaseError && purchaseError.userCancelled) {
+        setStoreMessage("Purchase cancelled.");
+      } else {
+        setStoreMessage(
+          error instanceof Error ? error.message : "That purchase could not be completed."
+        );
+      }
+    } finally {
+      setPurchaseLoadingId(null);
+    }
   }
 
   useEffect(() => {
@@ -639,30 +751,55 @@ export default function HomePage() {
                     Orbit Store
                   </div>
                   <h2 className="mt-2 text-xl font-semibold text-white">Fuel and Star Packs</h2>
+                  <p className="mt-2 text-sm leading-6 text-slate-300">
+                    Fuel refills instantly, and extra purchased fuel stays in reserve so it can
+                    keep topping up your tank later.
+                  </p>
+
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-300">
+                    <DailyTag label={`${fuelState.fuel}/${MAX_FUEL} Fuel Live`} />
+                    {(fuelState.reserveFuel ?? 0) > 0 && (
+                      <DailyTag label={`${fuelState.reserveFuel ?? 0} Fuel Stored`} highlight />
+                    )}
+                  </div>
 
                   <div className="mt-4 grid gap-3">
-                    <StoreItemCard
-                      title="5 Fuel"
-                      subtitle="Restore 5 fuel instantly"
-                      priceLabel="$0.99"
-                      accent="from-rose-300/25 via-rose-400/12 to-transparent"
-                      icon={<FuelIcon />}
-                    />
-                    <StoreItemCard
-                      title="15 Fuel"
-                      subtitle="Restore 15 fuel instantly"
-                      priceLabel="$1.99"
-                      accent="from-orange-300/25 via-rose-400/12 to-transparent"
-                      icon={<FuelIcon />}
-                    />
-                    <StoreItemCard
-                      title="20 Stars"
-                      subtitle="Get 20 stars for hints and boosts"
-                      priceLabel="$1.99"
-                      accent="from-amber-200/25 via-yellow-400/14 to-transparent"
-                      icon={<StarIcon />}
-                    />
+                    {STORE_CATALOG.map((item) => (
+                      <StoreItemCard
+                        key={item.productId}
+                        title={item.title}
+                        subtitle={item.subtitle}
+                        priceLabel={storeProducts[item.productId]?.priceString ?? "Loading..."}
+                        accent={
+                          item.productId === "stars_20"
+                            ? "from-amber-200/25 via-yellow-400/14 to-transparent"
+                            : item.productId === "fuel_15"
+                              ? "from-orange-300/25 via-rose-400/12 to-transparent"
+                              : "from-rose-300/25 via-rose-400/12 to-transparent"
+                        }
+                        icon={item.productId === "stars_20" ? <StarIcon /> : <FuelIcon />}
+                        buttonLabel={
+                          purchaseLoadingId === item.productId
+                            ? "Purchasing..."
+                            : isNativePurchasePlatform()
+                              ? "Buy Pack"
+                              : "Mobile Only"
+                        }
+                        onClick={() => handleStorePurchase(item.productId)}
+                        disabled={
+                          purchaseLoadingId !== null ||
+                          !isNativePurchasePlatform() ||
+                          !storeProducts[item.productId]
+                        }
+                      />
+                    ))}
                   </div>
+
+                  {(storeLoading || storeMessage) && (
+                    <div className="mt-3 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-sm text-cyan-100">
+                      {storeLoading ? "Loading store products..." : storeMessage}
+                    </div>
+                  )}
                 </div>
               ) : utilityTab === "daily" ? (
                 <div>
@@ -917,12 +1054,18 @@ function StoreItemCard({
   priceLabel,
   accent,
   icon,
+  buttonLabel,
+  onClick,
+  disabled,
 }: {
   title: string;
   subtitle: string;
   priceLabel: string;
   accent: string;
   icon: ReactNode;
+  buttonLabel: string;
+  onClick: () => void;
+  disabled?: boolean;
 }) {
   return (
     <div className="relative overflow-hidden rounded-[24px] border border-white/10 bg-white/5 p-4">
@@ -938,8 +1081,18 @@ function StoreItemCard({
           <div className="mt-2 text-sm text-slate-300">{subtitle}</div>
         </div>
 
-        <div className="shrink-0 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-sm font-semibold text-cyan-100">
-          {priceLabel}
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-sm font-semibold text-cyan-100">
+            {priceLabel}
+          </div>
+          <button
+            type="button"
+            onClick={onClick}
+            disabled={disabled}
+            className="rounded-2xl bg-cyan-300 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-300"
+          >
+            {buttonLabel}
+          </button>
         </div>
       </div>
     </div>
