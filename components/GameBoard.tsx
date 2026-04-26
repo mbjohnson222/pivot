@@ -24,12 +24,20 @@ export default function GameBoard({
   const size = grid.length;
   const cellSizeClass =
     size >= 10
-      ? "h-6 w-6 rounded-lg sm:h-8 sm:w-8"
+      ? "h-[1.05rem] w-[1.05rem] rounded-md sm:h-7 sm:w-7"
+      : size >= 8
+      ? "h-[1.2rem] w-[1.2rem] rounded-lg sm:h-8 sm:w-8"
       : size >= 6
-      ? "h-7 w-7 rounded-xl sm:h-10 sm:w-10"
+      ? "h-[1.38rem] w-[1.38rem] rounded-xl sm:h-9 sm:w-9"
+      : size >= 5
+      ? "h-[1.6rem] w-[1.6rem] rounded-xl sm:h-10 sm:w-10"
       : "h-10 w-10 rounded-2xl sm:h-14 sm:w-14";
-  const boardPaddingClass = size >= 10 ? "p-2" : size >= 6 ? "p-2" : "p-2.5";
-  const boardGap = size >= 10 ? "0.375rem" : size >= 6 ? "0.45rem" : "0.5rem";
+  const boardPaddingClass =
+    size >= 10 ? "p-1.5 sm:p-2" : size >= 8 ? "p-1.5 sm:p-2" : size >= 5 ? "p-2" : "p-2.5";
+  const boardGap =
+    size >= 10 ? "0.24rem" : size >= 8 ? "0.28rem" : size >= 5 ? "0.34rem" : "0.5rem";
+  const boardShellClass =
+    size >= 8 ? "rounded-[24px] p-2.5 sm:rounded-[28px] sm:p-4" : "rounded-[28px] p-4";
 
   return (
     <div className="flex flex-col items-center gap-3">
@@ -44,7 +52,9 @@ export default function GameBoard({
         </div>
       )}
 
-      <div className="rounded-[28px] border border-slate-700/70 bg-slate-900/90 p-4 shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
+      <div
+        className={`${boardShellClass} border border-slate-700/70 bg-slate-900/90 shadow-[0_18px_50px_rgba(0,0,0,0.35)]`}
+      >
         <div
           className={`grid rounded-[22px] bg-slate-800/90 ${boardPaddingClass}`}
           style={{

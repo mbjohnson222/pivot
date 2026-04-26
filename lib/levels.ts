@@ -215,6 +215,47 @@ function makeSymmetryLevel(
   };
 }
 
+function getBaseStarSeconds(level: Pick<Level, "type" | "size" | "memoryPreviewMs">) {
+  return level.type === "transform" || level.type === "chromatic"
+    ? level.size * 4 + 4
+    : level.type === "memory"
+    ? level.size * 5 + Math.round((level.memoryPreviewMs ?? 2000) / 1000) + 4
+    : level.size * 4 + 3;
+}
+
+function addCountdownLevel(level: Level, multiplier = 1.55): Level {
+  const countdownMs = Math.max(
+    16_000,
+    Math.round(getBaseStarSeconds(level) * multiplier * 1000)
+  );
+
+  return {
+    ...level,
+    countdownMs,
+    prompt: `${level.prompt} Finish before the countdown expires.`,
+  };
+}
+
+function shouldUseCountdown(level: Level) {
+  if (level.id < 151) {
+    return false;
+  }
+
+  if (level.id >= 300) {
+    return level.id % 6 === 0;
+  }
+
+  if (level.id >= 201) {
+    return level.id % 8 === 0;
+  }
+
+  return level.id % 10 === 0;
+}
+
+function applyCountdownMix(levels: Level[]) {
+  return levels.map((level) => (shouldUseCountdown(level) ? addCountdownLevel(level) : level));
+}
+
 /* =========================
    4x4 patterns
 ========================= */
@@ -1463,7 +1504,7 @@ function buildMonochromeGrandmasterLevels(startId: number, count: number): Level
 const chromatic_mixed_endgame: Level[] = buildChromaticMixedLevels(300, 100);
 const monochrome_grandmaster: Level[] = buildMonochromeGrandmasterLevels(400, 101);
 
-export const levels: Level[] = [
+const baseCampaignLevels: Level[] = [
   ...first50_4x4,
   ...second50_4x4,
   ...hundred_5x5,
@@ -1471,3 +1512,5 @@ export const levels: Level[] = [
   ...chromatic_mixed_endgame,
   ...monochrome_grandmaster,
 ];
+
+export const levels: Level[] = applyCountdownMix(baseCampaignLevels);

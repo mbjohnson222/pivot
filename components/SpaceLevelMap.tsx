@@ -36,7 +36,7 @@ const LEVELS_PER_PLANET = 50;
 const TOP_OFFSET = 110;
 const CLUSTER_HEIGHT = 300;
 const CLUSTER_GAP = 78;
-const MOBILE_X_SCALE = 0.76;
+const MOBILE_X_SCALE = 0.86;
 const MOBILE_X_CENTER = 50;
 
 type StarPoint = {
@@ -536,12 +536,12 @@ function buildConstellationLayout(
   const positions: Array<{ x: number; y: number; mobileX: number; tabletX: number; renderX: number }> = [];
   const edges: Array<[number, number]> = [];
   const clusterTotal = Math.ceil(count / 10);
-  const mobileXScale = isPhoneViewport ? 0.62 : MOBILE_X_SCALE;
+  const mobileXScale = MOBILE_X_SCALE;
   const tabletXScale = isTabletViewport ? 1.02 : 1;
   const yScale = isTabletViewport ? 2.9 : 2.5;
   const clusterHeight = isTabletViewport ? 340 : CLUSTER_HEIGHT;
   const clusterGap = isTabletViewport ? 98 : CLUSTER_GAP;
-  const xStretch = isTabletViewport ? 1.06 : 1;
+  const xStretch = isPhoneViewport ? 1.08 : isTabletViewport ? 1.06 : 1;
   const height = TOP_OFFSET + clusterTotal * clusterHeight + (clusterTotal - 1) * clusterGap;
 
   for (let clusterIndex = 0; clusterIndex < clusterTotal; clusterIndex++) {

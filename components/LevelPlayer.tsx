@@ -70,6 +70,7 @@ export default function LevelPlayer({
   const [adLoading, setAdLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
+  const [timedOut, setTimedOut] = useState(false);
   const [paintPickerCell, setPaintPickerCell] = useState<{ row: number; col: number } | null>(
     null
   );
@@ -99,10 +100,23 @@ export default function LevelPlayer({
     stopGameTimer();
     gameStartRef.current = Date.now();
     setElapsedMs(0);
+    setTimedOut(false);
 
     gameTimerRef.current = window.setInterval(() => {
       if (gameStartRef.current !== null) {
-        setElapsedMs(Date.now() - gameStartRef.current);
+        const nextElapsed = Date.now() - gameStartRef.current;
+
+        if (level.countdownMs && nextElapsed >= level.countdownMs) {
+          stopGameTimer();
+          setElapsedMs(level.countdownMs);
+          setTimedOut(true);
+          setHintedCell(null);
+          setHintMessage("Time expired. Replay the level to take another run at it.");
+          setPaintPickerCell(null);
+          return;
+        }
+
+        setElapsedMs(nextElapsed);
       }
     }, 100);
   }
@@ -123,6 +137,7 @@ export default function LevelPlayer({
     setMoves(0);
     setElapsedMs(0);
     setHasStarted(false);
+    setTimedOut(false);
     setShowMemoryPreview(false);
 
     if (level.type === "symmetry") {
@@ -154,6 +169,7 @@ export default function LevelPlayer({
     setWon(false);
     setMoves(0);
     setElapsedMs(0);
+    setTimedOut(false);
 
     if (level.type === "transform" || level.type === "chromatic") {
       setShowMemoryPreview(false);
@@ -196,6 +212,7 @@ export default function LevelPlayer({
       setMoves(0);
       setElapsedMs(0);
       setHasStarted(false);
+      setTimedOut(false);
       setShowMemoryPreview(false);
       setPlayerGrid(
         level.type === "symmetry" ? cloneGrid(level.startGrid) : createEmptyGrid(level.size)
@@ -235,7 +252,7 @@ export default function LevelPlayer({
   }, [hasStarted, level.id]);
 
   function handleCellClick(row: number, col: number) {
-    if (!hasStarted || won || showMemoryPreview) return;
+    if (!hasStarted || won || timedOut || showMemoryPreview) return;
 
     if (level.type === "symmetry") {
       if (!level.symmetrySourceSide) return;
@@ -270,14 +287,25 @@ export default function LevelPlayer({
     setMoves((prev) => prev + 1);
   }
 
-  const timerLabel = useMemo(() => formatMs(elapsedMs), [elapsedMs]);
+  const remainingMs = level.countdownMs ? Math.max(0, level.countdownMs - elapsedMs) : elapsedMs;
+  const timerLabel = useMemo(() => formatMs(remainingMs), [remainingMs]);
+  const showsBoardTimer = level.type === "transform" || level.type === "chromatic";
   const canSubmit =
-    hasStarted && !won && !showMemoryPreview && gridsEqual(playerGrid, level.targetGrid);
+    hasStarted &&
+    !won &&
+    !timedOut &&
+    !showMemoryPreview &&
+    gridsEqual(playerGrid, level.targetGrid);
   const currentStarReward = getStarReward(level, elapsedMs);
   const thresholds = getStarThresholds(level);
   const nextHintCell = getHintCell(playerGrid, level);
   const canUseHint =
-    hasStarted && !won && !showMemoryPreview && availableStars > 0 && nextHintCell !== null;
+    hasStarted &&
+    !won &&
+    !timedOut &&
+    !showMemoryPreview &&
+    availableStars > 0 &&
+    nextHintCell !== null;
 
   async function handleSubmit() {
     if (!canSubmit) return;
@@ -376,12 +404,20 @@ export default function LevelPlayer({
             <span className="font-semibold">Level {level.id}</span>
             <span className="text-slate-500">•</span>
             <span>{modeLabel}</span>
+            {level.countdownMs && (
+              <>
+                <span className="text-slate-500">•</span>
+                <span className="text-rose-200">Countdown</span>
+              </>
+            )}
             <span className="text-slate-500">•</span>
             <span>{level.size}×{level.size}</span>
           </div>
 
           <div className="flex flex-wrap items-center justify-center gap-3">
-            <StatPill label="Timer" value={timerLabel} />
+            {!showsBoardTimer && (
+              <StatPill label={level.countdownMs ? "Countdown" : "Timer"} value={timerLabel} />
+            )}
             <StatPill label="Stars Banked" value={String(availableStars)} />
             {level.type === "memory" && (
               <StatPill
@@ -444,7 +480,7 @@ export default function LevelPlayer({
         )}
 
         {(level.type === "transform" || level.type === "chromatic") && (
-          <div className="grid w-full gap-4 sm:gap-6 lg:grid-cols-2 lg:gap-8">
+          <div className="grid w-full items-center gap-2 sm:gap-3 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:gap-4">
             <div className="flex justify-center">
               <GameBoard
                 grid={level.startGrid}
@@ -458,21 +494,27 @@ export default function LevelPlayer({
               />
             </div>
 
-            <div className="flex flex-col items-center gap-4">
-              <div className="flex justify-center">
-                <GameBoard
-                  grid={playerGrid}
-                  onCellClick={handleCellClick}
-                  disabled={!hasStarted}
-                  title="Your Build"
-                  subtitle={
-                    level.type === "chromatic"
-                      ? "Tap any tile to choose its color"
-                      : "Tap tiles to create the transformed result"
-                  }
-                  highlightedCell={hintedCell}
-                />
-              </div>
+            <div className="flex justify-center">
+              <BoardTimerBadge
+                label={level.countdownMs ? "Countdown" : "Timer"}
+                value={timerLabel}
+                urgent={Boolean(level.countdownMs && remainingMs <= 10_000)}
+              />
+            </div>
+
+            <div className="flex justify-center">
+              <GameBoard
+                grid={playerGrid}
+                onCellClick={handleCellClick}
+                disabled={!hasStarted || timedOut}
+                title="Your Build"
+                subtitle={
+                  level.type === "chromatic"
+                    ? "Tap any tile to choose its color"
+                    : "Tap tiles to create the transformed result"
+                }
+                highlightedCell={hintedCell}
+              />
             </div>
           </div>
         )}
@@ -482,7 +524,7 @@ export default function LevelPlayer({
             <GameBoard
               grid={!hasStarted ? createEmptyGrid(level.size) : playerGrid}
               onCellClick={handleCellClick}
-              disabled={!hasStarted || showMemoryPreview}
+              disabled={!hasStarted || timedOut || showMemoryPreview}
               title={
                 !hasStarted
                   ? "Ready"
@@ -513,9 +555,9 @@ export default function LevelPlayer({
             <GameBoard
               grid={playerGrid}
               onCellClick={handleCellClick}
-              disabled={!hasStarted}
+              disabled={!hasStarted || timedOut}
               isCellEditable={(row, col) => {
-                if (!hasStarted || !level.symmetrySourceSide) return false;
+                if (!hasStarted || timedOut || !level.symmetrySourceSide) return false;
                 return isSymmetryCellEditable(level.size, level.symmetrySourceSide, row, col);
               }}
               title="Complete the Symmetry"
@@ -526,7 +568,7 @@ export default function LevelPlayer({
         )}
 
         <div className="sticky bottom-0 z-20 -mx-2 flex flex-nowrap items-center justify-center gap-2 overflow-x-auto border-t border-white/10 bg-[linear-gradient(180deg,rgba(8,14,30,0.45),rgba(8,14,30,0.96))] px-2 py-3 pb-[calc(var(--safe-bottom)+0.75rem)] backdrop-blur-xl sm:-mx-3 sm:gap-3 sm:px-3 sm:pb-3">
-          {hasStarted && !won && (
+          {hasStarted && !won && !timedOut && (
             <>
               <button
                 type="button"
@@ -576,8 +618,16 @@ export default function LevelPlayer({
         </div>
 
         {hasStarted && !won && (
-          <div className="max-w-2xl rounded-2xl border border-amber-400/20 bg-amber-400/10 px-5 py-3 text-sm text-amber-100">
-            {hintMessage || "Hints outline one missing tile in red and cost 1 banked star."}
+          <div
+            className={`max-w-2xl rounded-2xl px-5 py-3 text-sm ${
+              timedOut
+                ? "border border-rose-400/25 bg-rose-400/10 text-rose-100"
+                : "border border-amber-400/20 bg-amber-400/10 text-amber-100"
+            }`}
+          >
+            {timedOut
+              ? "Time expired before the pattern was submitted. Replay the level to try again."
+              : hintMessage || "Hints outline one missing tile in red and cost 1 banked star."}
           </div>
         )}
 
@@ -704,6 +754,31 @@ function StatPill({ label, value }: { label: string; value: string }) {
     <div className="rounded-full border border-slate-700 bg-slate-900/70 px-4 py-2 text-sm">
       <span className="mr-2 text-slate-400">{label}</span>
       <span className="font-semibold text-white">{value}</span>
+    </div>
+  );
+}
+
+function BoardTimerBadge({
+  label,
+  value,
+  urgent,
+}: {
+  label: string;
+  value: string;
+  urgent?: boolean;
+}) {
+  return (
+    <div
+      className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm shadow-[0_14px_34px_rgba(2,6,23,0.34)] ${
+        urgent
+          ? "border-rose-300/35 bg-rose-400/16 text-rose-50"
+          : "border-cyan-300/25 bg-cyan-300/10 text-cyan-50"
+      }`}
+    >
+      <span className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-300">
+        {label}
+      </span>
+      <span className="font-semibold">{value}</span>
     </div>
   );
 }

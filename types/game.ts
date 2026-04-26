@@ -12,6 +12,7 @@ export type Level = {
   startGrid: Grid;
   targetGrid: Grid;
   prompt: string;
+  countdownMs?: number;
   memoryPreviewMs?: number;
   symmetryKind?: SymmetryKind;
   symmetrySourceSide?: SymmetrySourceSide;
