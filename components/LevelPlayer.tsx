@@ -37,6 +37,7 @@ type LevelPlayerProps = {
   onConsumeStart?: () => Promise<boolean> | boolean;
   onSpendHintStar: () => boolean;
   onComplete: (starsEarned: number, elapsedMs: number) => void;
+  onAdvance?: () => void;
 };
 
 export default function LevelPlayer({
@@ -58,6 +59,7 @@ export default function LevelPlayer({
   onConsumeStart,
   onSpendHintStar,
   onComplete,
+  onAdvance,
 }: LevelPlayerProps) {
   const [playerGrid, setPlayerGrid] = useState(createEmptyGrid(level.size));
   const [showMemoryPreview, setShowMemoryPreview] = useState(false);
@@ -389,8 +391,10 @@ export default function LevelPlayer({
       if (!rewarded) {
         setHintMessage("The rewarded ad was not completed, so no fuel was added.");
       }
-    } catch {
-      setHintMessage("The rewarded ad could not be loaded right now. Please try again.");
+    } catch (error) {
+      setHintMessage(
+        error instanceof Error ? error.message : "The rewarded ad could not be loaded right now."
+      );
     } finally {
       setAdLoading(false);
     }
@@ -626,7 +630,7 @@ export default function LevelPlayer({
 
           {won && showNextLevelButton && (
             <button
-              onClick={() => onComplete(getStarReward(level, elapsedMs), elapsedMs)}
+              onClick={onAdvance}
               className="shrink-0 whitespace-nowrap rounded-2xl bg-cyan-400 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300 sm:px-5"
             >
               Next Level

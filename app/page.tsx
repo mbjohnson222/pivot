@@ -264,7 +264,6 @@ export default function HomePage() {
     }
 
     setProgress(nextProgress);
-    setLevelIndex((prev) => Math.min(prev + 1, levels.length - 1));
 
     if (username) {
       void syncSharedProgress({
@@ -274,6 +273,10 @@ export default function HomePage() {
         totalStarsSpent: nextProgress.totalStarsSpent,
       });
     }
+  }
+
+  function handleAdvanceToNextLevel() {
+    setLevelIndex((prev) => Math.min(prev + 1, levels.length - 1));
   }
 
   function handleSpendHintStar() {
@@ -318,9 +321,7 @@ export default function HomePage() {
       const rewarded = await showRewardedFuelAd();
 
       if (!rewarded) {
-        setStarAdMessage(
-          "The rewarded ad did not complete. If you're testing in the simulator, try a physical device."
-        );
+        setStarAdMessage("The rewarded ad did not complete, so no star was added.");
         return false;
       }
 
@@ -339,9 +340,9 @@ export default function HomePage() {
       }
 
       return true;
-    } catch {
+    } catch (error) {
       setStarAdMessage(
-        "Rewarded ads could not be loaded right now. If you're testing in the simulator, try a physical device."
+        error instanceof Error ? error.message : "Rewarded ads could not be loaded right now."
       );
       return false;
     } finally {
@@ -357,9 +358,7 @@ export default function HomePage() {
       const rewarded = await showRewardedFuelAd();
 
       if (!rewarded) {
-        setDailyAdMessage(
-          "The rewarded ad did not complete. If you're testing in the simulator, try a physical device."
-        );
+        setDailyAdMessage("The rewarded ad did not complete, so no extra attempt was granted.");
         return false;
       }
 
@@ -374,9 +373,9 @@ export default function HomePage() {
       setDailyAdMessage("Extra daily attempt unlocked.");
       setActiveOverlay("daily");
       return true;
-    } catch {
+    } catch (error) {
       setDailyAdMessage(
-        "Rewarded ads could not be loaded right now. If you're testing in the simulator, try a physical device."
+        error instanceof Error ? error.message : "Rewarded ads could not be loaded right now."
       );
       return false;
     } finally {
@@ -645,18 +644,21 @@ export default function HomePage() {
                     <StoreItemCard
                       title="5 Fuel"
                       subtitle="Restore 5 fuel instantly"
+                      priceLabel="$0.99"
                       accent="from-rose-300/25 via-rose-400/12 to-transparent"
                       icon={<FuelIcon />}
                     />
                     <StoreItemCard
                       title="15 Fuel"
                       subtitle="Restore 15 fuel instantly"
+                      priceLabel="$1.99"
                       accent="from-orange-300/25 via-rose-400/12 to-transparent"
                       icon={<FuelIcon />}
                     />
                     <StoreItemCard
                       title="20 Stars"
                       subtitle="Get 20 stars for hints and boosts"
+                      priceLabel="$1.99"
                       accent="from-amber-200/25 via-yellow-400/14 to-transparent"
                       icon={<StarIcon />}
                     />
@@ -880,6 +882,7 @@ export default function HomePage() {
 
                 handleLevelComplete(starsEarned, elapsedMs);
               }}
+              onAdvance={activeOverlay === "daily" ? undefined : handleAdvanceToNextLevel}
             />
           </div>
         </div>
@@ -911,11 +914,13 @@ function DailyTag({
 function StoreItemCard({
   title,
   subtitle,
+  priceLabel,
   accent,
   icon,
 }: {
   title: string;
   subtitle: string;
+  priceLabel: string;
   accent: string;
   icon: ReactNode;
 }) {
@@ -933,13 +938,9 @@ function StoreItemCard({
           <div className="mt-2 text-sm text-slate-300">{subtitle}</div>
         </div>
 
-        <button
-          type="button"
-          disabled
-          className="shrink-0 rounded-2xl bg-slate-700 px-4 py-3 text-sm font-semibold text-slate-300"
-        >
-          Coming Soon
-        </button>
+        <div className="shrink-0 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-sm font-semibold text-cyan-100">
+          {priceLabel}
+        </div>
       </div>
     </div>
   );
