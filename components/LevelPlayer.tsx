@@ -369,8 +369,8 @@ export default function LevelPlayer({
   }
 
   return (
-    <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_340px]">
-      <div ref={playAreaRef} className="flex flex-col items-center gap-5">
+    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px] xl:gap-8">
+      <div ref={playAreaRef} className="flex flex-col items-center gap-4 pb-24 sm:gap-5 sm:pb-28">
         <div className="flex flex-col items-center gap-2 text-center">
           <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900/70 px-4 py-1.5 text-sm text-slate-300">
             <span className="font-semibold">Level {level.id}</span>
@@ -444,7 +444,7 @@ export default function LevelPlayer({
         )}
 
         {(level.type === "transform" || level.type === "chromatic") && (
-          <div className="grid w-full gap-8 lg:grid-cols-2">
+          <div className="grid w-full gap-4 sm:gap-6 lg:grid-cols-2 lg:gap-8">
             <div className="flex justify-center">
               <GameBoard
                 grid={level.startGrid}
@@ -525,14 +525,14 @@ export default function LevelPlayer({
           </div>
         )}
 
-        <div className="sticky bottom-0 z-20 -mx-2 flex flex-wrap justify-center gap-3 border-t border-white/10 bg-[linear-gradient(180deg,rgba(8,14,30,0.45),rgba(8,14,30,0.96))] px-2 py-3 backdrop-blur-xl sm:-mx-3 sm:px-3">
+        <div className="sticky bottom-0 z-20 -mx-2 flex flex-nowrap items-center justify-center gap-2 overflow-x-auto border-t border-white/10 bg-[linear-gradient(180deg,rgba(8,14,30,0.45),rgba(8,14,30,0.96))] px-2 py-3 pb-[calc(var(--safe-bottom)+0.75rem)] backdrop-blur-xl sm:-mx-3 sm:gap-3 sm:px-3 sm:pb-3">
           {hasStarted && !won && (
             <>
               <button
                 type="button"
                 onClick={handleUseHint}
                 disabled={!canUseHint}
-                className={`rounded-2xl px-5 py-2.5 text-sm font-semibold transition ${
+                className={`shrink-0 whitespace-nowrap rounded-2xl px-4 py-2.5 text-sm font-semibold transition sm:px-5 ${
                   canUseHint
                     ? "border border-amber-400/40 bg-amber-400/10 text-amber-200 hover:bg-amber-400/20"
                     : "cursor-not-allowed border border-slate-700 bg-slate-800 text-slate-500"
@@ -545,7 +545,7 @@ export default function LevelPlayer({
                 type="button"
                 onClick={handleSubmit}
                 disabled={!canSubmit}
-                className={`rounded-2xl px-5 py-2.5 text-sm font-semibold transition ${
+                className={`shrink-0 whitespace-nowrap rounded-2xl px-4 py-2.5 text-sm font-semibold transition sm:px-5 ${
                   canSubmit
                     ? "bg-cyan-400 text-slate-950 hover:bg-cyan-300"
                     : "bg-slate-700 text-slate-400 cursor-not-allowed"
@@ -559,7 +559,7 @@ export default function LevelPlayer({
           {showReplayButton && (
             <button
               onClick={initializeLevel}
-              className="rounded-2xl border border-slate-700 bg-slate-900 px-5 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-slate-800"
+              className="shrink-0 whitespace-nowrap rounded-2xl border border-slate-700 bg-slate-900 px-4 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-slate-800 sm:px-5"
             >
               Replay Level
             </button>
@@ -568,7 +568,7 @@ export default function LevelPlayer({
           {won && showNextLevelButton && (
             <button
               onClick={() => onComplete(getStarReward(level, elapsedMs), elapsedMs)}
-              className="rounded-2xl bg-cyan-400 px-5 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300"
+              className="shrink-0 whitespace-nowrap rounded-2xl bg-cyan-400 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300 sm:px-5"
             >
               Next Level
             </button>
@@ -603,17 +603,17 @@ export default function LevelPlayer({
               <div className="mt-5 grid gap-3">
                 <PaintPickerButton
                   label="Clear"
-                  colorClass="bg-slate-700"
+                  colorClass="border-slate-600/80 bg-gradient-to-br from-slate-700 to-slate-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
                   onClick={() => handleChromaticPaintSelection(0)}
                 />
                 <PaintPickerButton
                   label="Cyan"
-                  colorClass="bg-cyan-400"
+                  colorClass="border-cyan-200/80 bg-gradient-to-br from-cyan-300 to-cyan-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_8px_18px_rgba(6,182,212,0.28)]"
                   onClick={() => handleChromaticPaintSelection(1)}
                 />
                 <PaintPickerButton
                   label="Amber"
-                  colorClass="bg-amber-400"
+                  colorClass="border-amber-100/80 bg-gradient-to-br from-amber-200 to-orange-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_8px_18px_rgba(251,146,60,0.3)]"
                   onClick={() => handleChromaticPaintSelection(2)}
                 />
               </div>
@@ -723,7 +723,7 @@ function PaintPickerButton({
       onClick={onClick}
       className="inline-flex items-center gap-3 rounded-2xl border border-slate-700 bg-slate-950/60 px-4 py-3 text-sm font-semibold text-slate-200 transition hover:bg-slate-800"
     >
-      <span className={`h-4 w-4 rounded-full ${colorClass}`} />
+      <span className={`h-5 w-5 rounded-full border ${colorClass}`} />
       <span>{label}</span>
     </button>
   );

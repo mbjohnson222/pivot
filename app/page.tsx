@@ -7,6 +7,7 @@ import LevelPlayer from "@/components/LevelPlayer";
 import SpaceLevelMap from "@/components/SpaceLevelMap";
 import UsernameGate from "@/components/UsernameGate";
 import { showRewardedFuelAd } from "@/lib/admob";
+import { getCurrentIdentity, onAuthStateChange, signOutUser } from "@/lib/auth";
 import { buildDailyPuzzle, getTodayDailyKey } from "@/lib/daily";
 import { levels } from "@/lib/levels";
 import {
@@ -16,11 +17,13 @@ import {
   getFuelState,
   getProgress,
   grantFuel,
+  grantStars,
   MAX_FUEL,
   markDailyPuzzleCompleted,
   recordLevelCompletion,
   rehydrateProgress,
   saveProgress,
+  setActiveProgressAccount,
   spendStars,
   spendFuel,
   unlockDailyBonusAttempt,
@@ -33,7 +36,6 @@ import {
   syncSharedProgress,
   type ProgressLeaderboardEntry,
 } from "@/lib/scores";
-import { getStoredString } from "@/lib/storage";
 
 export default function HomePage() {
   const [splashComplete, setSplashComplete] = useState(false);
@@ -51,21 +53,17 @@ export default function HomePage() {
 
     return getResumeLevelIndex(getProgress());
   });
-  const [username, setUsername] = useState<string | null>(() => {
-    if (typeof window === "undefined") {
-      return null;
-    }
-
-    return localStorage.getItem("pivot-username");
-  });
+  const [username, setUsername] = useState<string | null>(null);
   const [dailyLevelId, setDailyLevelId] = useState<number | null>(null);
   const [activeOverlay, setActiveOverlay] = useState<"campaign" | "daily" | null>(null);
   const [storageHydrated, setStorageHydrated] = useState(false);
   const [progressLeaderboard, setProgressLeaderboard] = useState<ProgressLeaderboardEntry[]>([]);
   const [dailyAdLoading, setDailyAdLoading] = useState(false);
   const [dailyAdMessage, setDailyAdMessage] = useState<string | null>(null);
+  const [starAdLoading, setStarAdLoading] = useState(false);
+  const [starAdMessage, setStarAdMessage] = useState<string | null>(null);
   const [utilityMenuOpen, setUtilityMenuOpen] = useState(false);
-  const [utilityTab, setUtilityTab] = useState<"daily" | "leaderboard">("daily");
+  const [utilityTab, setUtilityTab] = useState<"daily" | "leaderboard" | "store">("store");
 
   const dailyKey = useMemo(() => getTodayDailyKey(), []);
   const dailyPuzzle = useMemo(() => buildDailyPuzzle(dailyKey), [dailyKey]);
@@ -84,19 +82,18 @@ export default function HomePage() {
       void (async () => {
         if (cancelled) return;
 
+        const identity = await getCurrentIdentity();
+        if (cancelled) return;
+
+        await setActiveProgressAccount(identity?.accountId ?? null);
+        if (cancelled) return;
+
         const savedProgress = await rehydrateProgress();
         if (cancelled) return;
 
         setProgress(savedProgress);
         setLevelIndex(getResumeLevelIndex(savedProgress));
-
-        const savedUsername = await getStoredString("pivot-username");
-        if (cancelled) return;
-
-        if (savedUsername) {
-          localStorage.setItem("pivot-username", savedUsername);
-          setUsername(savedUsername);
-        }
+        setUsername(identity?.username ?? null);
 
         setStorageHydrated(true);
       })();
@@ -197,22 +194,27 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    function handleStorage(event: StorageEvent) {
-      if (event.key !== "pivot-username") return;
-
-      setUsername(localStorage.getItem("pivot-username"));
-    }
-
-    window.addEventListener("storage", handleStorage);
+    const {
+      data: { subscription },
+    } = onAuthStateChange(() => {
+      void (async () => {
+        const identity = await getCurrentIdentity();
+        await setActiveProgressAccount(identity?.accountId ?? null);
+        const savedProgress = await rehydrateProgress();
+        setProgress(savedProgress);
+        setLevelIndex(getResumeLevelIndex(savedProgress));
+        setUsername(identity?.username ?? null);
+      })();
+    });
 
     return () => {
-      window.removeEventListener("storage", handleStorage);
+      subscription.unsubscribe();
     };
   }, []);
 
   useEffect(() => {
     function handleStorage(event: StorageEvent) {
-      if (event.key !== "pivot-progress") return;
+      if (!event.key?.startsWith("pivot-progress")) return;
 
       const savedProgress = getProgress();
       setProgress(savedProgress);
@@ -306,6 +308,45 @@ export default function HomePage() {
     const nextProgress = grantFuel(1);
     setProgress(nextProgress);
     return true;
+  }
+
+  async function handleWatchAdForStars() {
+    setStarAdLoading(true);
+    setStarAdMessage(null);
+
+    try {
+      const rewarded = await showRewardedFuelAd();
+
+      if (!rewarded) {
+        setStarAdMessage(
+          "The rewarded ad did not complete. If you're testing in the simulator, try a physical device."
+        );
+        return false;
+      }
+
+      const nextProgress = grantStars(1);
+      setProgress(nextProgress);
+      setStarAdMessage("+1 star added.");
+
+      if (username) {
+        void syncSharedProgress({
+          username,
+          highestLevelId:
+            nextProgress.completedLevels.length > 0 ? Math.max(...nextProgress.completedLevels) : 0,
+          starsByLevel: nextProgress.starsByLevel,
+          totalStarsSpent: nextProgress.totalStarsSpent,
+        });
+      }
+
+      return true;
+    } catch {
+      setStarAdMessage(
+        "Rewarded ads could not be loaded right now. If you're testing in the simulator, try a physical device."
+      );
+      return false;
+    } finally {
+      setStarAdLoading(false);
+    }
   }
 
   async function handleWatchAdForDailyAttempt() {
@@ -524,13 +565,13 @@ export default function HomePage() {
           <section className="mt-4 rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(10,15,31,0.96),rgba(6,11,22,0.94))] p-5 shadow-[0_24px_90px_rgba(2,6,23,0.45)]">
             <div className="mx-auto max-w-2xl text-center">
               <div className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-200">
-                Pilot Sign-In
+                Pilot Account
               </div>
               <h2 className="mt-2 text-2xl font-semibold text-white">
-                Choose a Username to Start Playing
+                Create an Account or Sign In
               </h2>
               <p className="mt-3 text-sm leading-6 text-slate-300">
-                Save your progress, stars, fuel, and daily challenge results on this device.
+                Use email and password so your username, progress, stars, fuel, and daily challenge results stay tied to your account.
               </p>
               <div className="mt-5">
                 <UsernameGate username={username} onUsernameSet={setUsername} />
@@ -560,6 +601,17 @@ export default function HomePage() {
               <div className="mb-4 flex gap-2">
                 <button
                   type="button"
+                  onClick={() => setUtilityTab("store")}
+                  className={`rounded-full px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] transition ${
+                    utilityTab === "store"
+                      ? "bg-cyan-300 text-slate-950"
+                      : "border border-white/10 bg-white/5 text-slate-200 hover:bg-white/8"
+                  }`}
+                >
+                  Store
+                </button>
+                <button
+                  type="button"
                   onClick={() => setUtilityTab("daily")}
                   className={`rounded-full px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] transition ${
                     utilityTab === "daily"
@@ -582,7 +634,35 @@ export default function HomePage() {
                 </button>
               </div>
 
-              {utilityTab === "daily" ? (
+              {utilityTab === "store" ? (
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-200">
+                    Orbit Store
+                  </div>
+                  <h2 className="mt-2 text-xl font-semibold text-white">Fuel and Star Packs</h2>
+
+                  <div className="mt-4 grid gap-3">
+                    <StoreItemCard
+                      title="5 Fuel"
+                      subtitle="Restore 5 fuel instantly"
+                      accent="from-rose-300/25 via-rose-400/12 to-transparent"
+                      icon={<FuelIcon />}
+                    />
+                    <StoreItemCard
+                      title="15 Fuel"
+                      subtitle="Restore 15 fuel instantly"
+                      accent="from-orange-300/25 via-rose-400/12 to-transparent"
+                      icon={<FuelIcon />}
+                    />
+                    <StoreItemCard
+                      title="20 Stars"
+                      subtitle="Get 20 stars for hints and boosts"
+                      accent="from-amber-200/25 via-yellow-400/14 to-transparent"
+                      icon={<StarIcon />}
+                    />
+                  </div>
+                </div>
+              ) : utilityTab === "daily" ? (
                 <div>
                   <div className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-200">
                     Daily Puzzle
@@ -681,6 +761,42 @@ export default function HomePage() {
                   </div>
                 </div>
               )}
+
+              <div className="mt-4 border-t border-white/10 pt-4">
+                <div className="mb-4">
+                  <div className="text-xs uppercase tracking-[0.2em] text-slate-500">
+                    Star Boost
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleWatchAdForStars}
+                    disabled={starAdLoading}
+                    className="mt-3 w-full rounded-2xl border border-amber-300/30 bg-amber-300/15 px-4 py-3 text-sm font-semibold text-amber-100 transition hover:bg-amber-300/22 disabled:cursor-wait disabled:opacity-80"
+                  >
+                    {starAdLoading ? "Loading Rewarded Ad..." : "Watch Ad for +1 Star"}
+                  </button>
+                  {starAdMessage && (
+                    <div className="mt-3 rounded-2xl border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-sm text-amber-100">
+                      {starAdMessage}
+                    </div>
+                  )}
+                </div>
+
+                <div className="text-xs uppercase tracking-[0.2em] text-slate-500">
+                  Signed in as
+                </div>
+                <div className="mt-1 text-sm font-semibold text-white">{username}</div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void signOutUser();
+                    setUtilityMenuOpen(false);
+                  }}
+                  className="mt-3 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-200 transition hover:bg-white/10"
+                >
+                  Sign Out
+                </button>
+              </div>
           </div>
         </div>
       )}
@@ -702,15 +818,15 @@ export default function HomePage() {
           onClick={closeLevelOverlay}
         >
           <div
-            className="relative h-full w-full overflow-y-auto rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(8,14,30,0.98),rgba(5,10,20,0.98))] p-4 shadow-[0_35px_140px_rgba(0,0,0,0.72)] sm:h-auto sm:max-h-[92vh] sm:max-w-6xl sm:rounded-[36px] sm:p-6"
+            className="relative h-full w-full overflow-y-auto rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(8,14,30,0.98),rgba(5,10,20,0.98))] px-3 pb-[calc(var(--safe-bottom)+1rem)] pt-3 shadow-[0_35px_140px_rgba(0,0,0,0.72)] sm:h-auto sm:max-h-[92vh] sm:max-w-6xl sm:rounded-[36px] sm:p-6"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="mb-5 flex flex-col gap-4 border-b border-white/10 pb-5 lg:flex-row lg:items-start lg:justify-between">
+            <div className="mb-4 flex flex-col gap-3 border-b border-white/10 pb-4 lg:flex-row lg:items-start lg:justify-between sm:mb-5 sm:gap-4 sm:pb-5">
               <div>
                 <div className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-200">
                   {activeOverlay === "daily" ? "Daily Puzzle" : "Live Puzzle Window"}
                 </div>
-                <h2 className="mt-2 text-3xl font-semibold text-white">
+                <h2 className="mt-2 text-2xl font-semibold text-white sm:text-3xl">
                   {activeOverlay === "daily"
                     ? "Today’s Daily Challenge"
                     : `Planet ${activePlanet}, Level ${level.id}`}
@@ -789,6 +905,43 @@ function DailyTag({
     >
       {label}
     </span>
+  );
+}
+
+function StoreItemCard({
+  title,
+  subtitle,
+  accent,
+  icon,
+}: {
+  title: string;
+  subtitle: string;
+  accent: string;
+  icon: ReactNode;
+}) {
+  return (
+    <div className="relative overflow-hidden rounded-[24px] border border-white/10 bg-white/5 p-4">
+      <div className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${accent}`} />
+      <div className="relative flex items-center justify-between gap-4">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-cyan-100">
+              {icon}
+            </div>
+            <div className="text-base font-semibold text-white">{title}</div>
+          </div>
+          <div className="mt-2 text-sm text-slate-300">{subtitle}</div>
+        </div>
+
+        <button
+          type="button"
+          disabled
+          className="shrink-0 rounded-2xl bg-slate-700 px-4 py-3 text-sm font-semibold text-slate-300"
+        >
+          Coming Soon
+        </button>
+      </div>
+    </div>
   );
 }
 

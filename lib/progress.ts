@@ -1,6 +1,9 @@
-import { getStoredJson, setStoredJson } from "@/lib/storage";
+import { getStoredJson, setStoredJson, setStoredString } from "@/lib/storage";
 
-const STORAGE_KEY = "pivot-progress";
+const LEGACY_STORAGE_KEY = "pivot-progress";
+const STORAGE_KEY_PREFIX = "pivot-progress:";
+const ACTIVE_PROGRESS_ACCOUNT_KEY = "pivot-active-progress-account";
+const GUEST_PROGRESS_ACCOUNT = "guest";
 
 export const MAX_FUEL = 5;
 export const FUEL_REGEN_MS = 30 * 60 * 1000;
@@ -36,7 +39,9 @@ export function getProgress(now = Date.now()): Progress {
     return EMPTY_PROGRESS;
   }
 
-  const raw = localStorage.getItem(STORAGE_KEY);
+  const storageKey = getProgressStorageKey();
+  migrateLegacyProgressIfNeeded(storageKey);
+  const raw = localStorage.getItem(storageKey);
   const normalized = raw ? normalizeProgress(safeJsonParse(raw)) : EMPTY_PROGRESS;
   const hydrated = hydrateFuel(normalized, now);
 
@@ -48,8 +53,10 @@ export function getProgress(now = Date.now()): Progress {
 }
 
 export function saveProgress(progress: Progress) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
-  void setStoredJson(STORAGE_KEY, progress);
+  const storageKey = getProgressStorageKey();
+  localStorage.setItem(storageKey, JSON.stringify(progress));
+  localStorage.setItem(`${STORAGE_KEY_PREFIX}updated-at`, String(Date.now()));
+  void setStoredJson(storageKey, progress);
 }
 
 export function getAvailableStars(progress = getProgress()) {
@@ -117,6 +124,17 @@ export function grantFuel(amount: number) {
     ...progress,
     fuel: Math.min(MAX_FUEL, progress.fuel + Math.max(0, Math.floor(amount))),
     fuelUpdatedAt: now,
+  };
+
+  saveProgress(next);
+  return next;
+}
+
+export function grantStars(amount: number) {
+  const progress = getProgress();
+  const next = {
+    ...progress,
+    totalStarsEarned: progress.totalStarsEarned + Math.max(0, Math.floor(amount)),
   };
 
   saveProgress(next);
@@ -202,14 +220,25 @@ export function markDailyPuzzleCompleted(dateKey: string, elapsedMs?: number) {
 }
 
 export async function rehydrateProgress(now = Date.now()) {
-  const stored = await getStoredJson<Progress>(STORAGE_KEY);
+  const storageKey = getProgressStorageKey();
+  const stored = await getStoredJson<Progress>(storageKey);
   const hydrated = hydrateFuel(normalizeProgress(stored), now);
 
   if (typeof window !== "undefined") {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(hydrated));
+    localStorage.setItem(storageKey, JSON.stringify(hydrated));
   }
 
   return hydrated;
+}
+
+export async function setActiveProgressAccount(accountId: string | null) {
+  const nextAccountId = accountId?.trim() || GUEST_PROGRESS_ACCOUNT;
+
+  if (typeof window !== "undefined") {
+    localStorage.setItem(ACTIVE_PROGRESS_ACCOUNT_KEY, nextAccountId);
+  }
+
+  await setStoredString(ACTIVE_PROGRESS_ACCOUNT_KEY, nextAccountId);
 }
 
 function hydrateFuel(progress: Progress, now: number) {
@@ -305,4 +334,24 @@ function safeJsonParse(raw: string) {
   } catch {
     return null;
   }
+}
+
+function getProgressStorageKey() {
+  if (typeof window === "undefined") {
+    return `${STORAGE_KEY_PREFIX}${GUEST_PROGRESS_ACCOUNT}`;
+  }
+
+  const accountId =
+    localStorage.getItem(ACTIVE_PROGRESS_ACCOUNT_KEY)?.trim() || GUEST_PROGRESS_ACCOUNT;
+  return `${STORAGE_KEY_PREFIX}${accountId}`;
+}
+
+function migrateLegacyProgressIfNeeded(storageKey: string) {
+  if (typeof window === "undefined") return;
+  if (localStorage.getItem(storageKey)) return;
+
+  const legacyValue = localStorage.getItem(LEGACY_STORAGE_KEY);
+  if (!legacyValue) return;
+
+  localStorage.setItem(storageKey, legacyValue);
 }

@@ -3,9 +3,9 @@
 import { Capacitor } from "@capacitor/core";
 import { AdMob } from "@capacitor-community/admob";
 
-const TEST_REWARDED_AD_IDS = {
-  android: "ca-app-pub-3940256099942544/5224354917",
-  ios: "ca-app-pub-3940256099942544/1712485313",
+const REWARDED_AD_IDS = {
+  android: "ca-app-pub-9279205525509269/2241855841",
+  ios: "ca-app-pub-9279205525509269/6006053063",
 } as const;
 
 let initializePromise: Promise<void> | null = null;
@@ -17,8 +17,8 @@ function isNativeAdPlatform() {
 
 function getRewardedAdUnitId() {
   return Capacitor.getPlatform() === "ios"
-    ? TEST_REWARDED_AD_IDS.ios
-    : TEST_REWARDED_AD_IDS.android;
+    ? REWARDED_AD_IDS.ios
+    : REWARDED_AD_IDS.android;
 }
 
 export async function initializeAdMob() {
@@ -40,7 +40,7 @@ export async function showRewardedFuelAd() {
 
   await AdMob.prepareRewardVideoAd({
     adId: getRewardedAdUnitId(),
-    isTesting: true,
+    isTesting: process.env.NODE_ENV !== "production",
     immersiveMode: true,
   });
 

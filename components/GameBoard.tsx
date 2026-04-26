@@ -26,9 +26,9 @@ export default function GameBoard({
     size >= 10
       ? "h-6 w-6 rounded-lg sm:h-8 sm:w-8"
       : size >= 6
-      ? "h-8 w-8 rounded-xl sm:h-10 sm:w-10"
-      : "h-12 w-12 rounded-2xl sm:h-14 sm:w-14";
-  const boardPaddingClass = size >= 10 ? "p-2" : size >= 6 ? "p-2.5" : "p-3";
+      ? "h-7 w-7 rounded-xl sm:h-10 sm:w-10"
+      : "h-10 w-10 rounded-2xl sm:h-14 sm:w-14";
+  const boardPaddingClass = size >= 10 ? "p-2" : size >= 6 ? "p-2" : "p-2.5";
   const boardGap = size >= 10 ? "0.375rem" : size >= 6 ? "0.45rem" : "0.5rem";
 
   return (
@@ -78,11 +78,11 @@ export default function GameBoard({
                     cell === 1
                       ? editable
                         ? "border-cyan-200/80 bg-gradient-to-br from-cyan-300 to-cyan-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_8px_18px_rgba(6,182,212,0.28)]"
-                        : "border-violet-200/50 bg-gradient-to-br from-violet-400/80 to-violet-600/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.22)]"
+                        : "border-cyan-100/60 bg-gradient-to-br from-cyan-300/85 to-cyan-600/85 shadow-[inset_0_1px_0_rgba(255,255,255,0.22)]"
                       : cell === 2
                       ? editable
                         ? "border-amber-100/80 bg-gradient-to-br from-amber-200 to-orange-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),0_8px_18px_rgba(251,146,60,0.3)]"
-                        : "border-amber-100/50 bg-gradient-to-br from-amber-300/80 to-orange-600/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.22)]"
+                        : "border-amber-100/60 bg-gradient-to-br from-amber-200/85 to-orange-500/85 shadow-[inset_0_1px_0_rgba(255,255,255,0.22)]"
                       : editable
                       ? "border-slate-600/80 bg-gradient-to-br from-slate-700 to-slate-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
                       : "border-slate-700/80 bg-gradient-to-br from-slate-800 to-slate-900 opacity-85",

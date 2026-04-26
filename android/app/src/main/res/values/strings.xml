@@ -4,5 +4,5 @@
     <string name="title_activity_main">Pivot Galaxy</string>
     <string name="package_name">com.pivot.galaxy</string>
     <string name="custom_url_scheme">com.pivot.galaxy</string>
-    <string name="admob_app_id">ca-app-pub-3940256099942544~3347511713</string>
+    <string name="admob_app_id">ca-app-pub-9279205525509269~2014837163</string>
 </resources>

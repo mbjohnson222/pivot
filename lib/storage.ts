@@ -25,6 +25,16 @@ export async function setStoredString(key: string, value: string) {
   } catch {}
 }
 
+export async function removeStoredString(key: string) {
+  if (typeof window !== "undefined") {
+    localStorage.removeItem(key);
+  }
+
+  try {
+    await Preferences.remove({ key });
+  } catch {}
+}
+
 export async function getStoredJson<T>(key: string): Promise<T | null> {
   const raw = await getStoredString(key);
 
